@@ -1,0 +1,15 @@
+# Python
+__pycache__/
+*.py[cod]
+backend/.venv/
+.venv/
+venv/
+
+# Node / React
+node_modules
+frontend/dist
+frontend/.env
+
+# IntelliJ IDE
+.idea/
+*.iml
