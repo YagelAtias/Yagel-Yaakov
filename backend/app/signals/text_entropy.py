@@ -1,5 +1,9 @@
 import zlib
-from signal_base import DistressSignal
+from fastapi import APIRouter, HTTPException
+from pydantic import BaseModel
+from .signal_base import DistressSignal
+
+router = APIRouter()
 
 # CONFIGURATION CONSTANTS
 MIN_TEXT_LENGTH = 30  # Text shorter than this is unreliable for compression
@@ -50,3 +54,19 @@ class EntropySignal(DistressSignal):
                 "is_repetitive": compression_ratio > RUMINATION_THRESHOLD
             }
         }
+
+entropy_signal = EntropySignal()
+
+class EntropyRequest(BaseModel):
+    text: str
+
+@router.post("/entropy")
+def analyze_entropy(request: EntropyRequest):
+    """
+    Receives text -> Runs EntropySignal logic -> Returns distress score
+    """
+    try:
+        return entropy_signal.analyze(request.text)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
