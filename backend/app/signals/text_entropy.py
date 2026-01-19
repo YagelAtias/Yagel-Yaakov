@@ -1,6 +1,5 @@
 import zlib
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel
 from .signal_base import DistressSignal
 
 router = APIRouter()
@@ -12,23 +11,23 @@ RUMINATION_THRESHOLD = 1.5  # The ratio where we officially flag "is_repetitive"
 
 
 class EntropySignal(DistressSignal):
-    def analyze(self, data: str) -> dict:
+    def analyze(self, data: dict) -> dict:
         """
         Analyzes text entropy using the zlib compression ratio.
         High ratio = Repetitive/Obsessive text (Rumination).
         Low ratio = Chaotic text.
         """
+        text = data.get("text", "")
 
         # Input test.
-        if not data or not isinstance(data, str):
-            return {"score": 0.0,
-                    "metadata": {"error": "Invalid Input"}
-                    }
-        if len(data) < MIN_TEXT_LENGTH:
-            return {"score": 0.0, "metadata": {"skip_reason": "text_too_short"}}
+        if not text or not isinstance(text, str):
+            return {"score": 0.0, "metadata": {"error": "Invalid Input"}}
+
+        if len(text) < MIN_TEXT_LENGTH:
+            return {"score": 0.0, "met adata": {"skip_reason": "text_too_short"}}
 
         # Type conversion to bytes and compression using Deflate algorithm (LZ77 and Huffman Coding)
-        encoded_data = data.encode("utf-8")
+        encoded_data = text.encode("utf-8")
         compressed_data = zlib.compress(encoded_data)
 
         original_len = len(encoded_data)
@@ -54,19 +53,3 @@ class EntropySignal(DistressSignal):
                 "is_repetitive": compression_ratio > RUMINATION_THRESHOLD
             }
         }
-
-entropy_signal = EntropySignal()
-
-class EntropyRequest(BaseModel):
-    text: str
-
-@router.post("/entropy")
-def analyze_entropy(request: EntropyRequest):
-    """
-    Receives text -> Runs EntropySignal logic -> Returns distress score
-    """
-    try:
-        return entropy_signal.analyze(request.text)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
