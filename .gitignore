@@ -1,15 +1,23 @@
-# Python
+# Large Models & AI Data
+backend/app/models/*.bin
+backend/app/models/*.vec
+
+# Python & FastAPI
 __pycache__/
 *.py[cod]
 backend/.venv/
 .venv/
 venv/
+.env
 
 # Node / React
-node_modules
-frontend/dist
+node_modules/
+frontend/node_modules/
+frontend/dist/
 frontend/.env
+dist/
 
-# IntelliJ IDE
+# IDEs & System Files
 .idea/
 *.iml
+.DS_Store
