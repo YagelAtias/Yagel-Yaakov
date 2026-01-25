@@ -6,7 +6,7 @@
 }
 
 .container {
-    max-width: 600px;
+    max-width: 960px;
     margin: 0 auto;
     font-family: 'Rubik', 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
 }
@@ -84,10 +84,11 @@ h1 {
 /* 4. Results Section (Animation) */
 .results-container {
     margin-top: 2rem;
-    background-color: #1a1a1a;
+    background: linear-gradient(180deg, #161616, #111);
     border-radius: 16px;
     padding: 2rem;
-    border: 1px solid #333;
+    border: 1px solid #2b2b2b;
+    box-shadow: 0 6px 28px rgba(0,0,0,.35);
     animation: slideUp 0.4s ease-out;
 }
 
@@ -107,6 +108,11 @@ h1 {
     grid-template-columns: 1fr 1fr;
     gap: 2rem;
     margin-top: 1rem;
+}
+@media (max-width: 900px) {
+    .results-grid {
+        grid-template-columns: 1fr;
+    }
 }
 
 .score-box {
@@ -157,6 +163,7 @@ h1 {
 /* Table for segment breakdown */
 .table-wrap {
     overflow-x: auto;
+    max-width: 100%;
 }
 .segments-table {
     width: 100%;
@@ -168,7 +175,8 @@ h1 {
     border-bottom: 1px solid #2f2f2f;
     padding: 8px 10px;
     text-align: right;
-    white-space: nowrap;
+    white-space: normal;
+    word-break: break-word;
 }
 .segments-table th {
     color: #aaa;
@@ -206,9 +214,9 @@ h1 {
 .stack {
     height: 100%;
 }
-.stack.whisper { background: #60a5fa; }
-.stack.normal { background: #9ca3af; }
-.stack.shout { background: #f87171; }
+.stack.whisper { background: #93c5fd; }
+.stack.normal { background: #cbd5e1; }
+.stack.shout { background: #fca5a5; }
 
 .legend { display: flex; gap: 12px; margin-top: 8px; color: #aaa; font-size: 0.9rem; }
 .legend .box { display: inline-block; width: 10px; height: 10px; margin-left: 6px; border-radius: 2px; }
@@ -278,7 +286,7 @@ h1 {
 
 /* Insights card */
 .insights-card {
-    background: linear-gradient(180deg, rgba(36,36,36,.9), rgba(24,24,24,.9));
+    background: linear-gradient(180deg, rgba(32,32,36,.9), rgba(20,20,24,.9));
     border: 1px solid #2d2d2d;
     border-radius: 12px;
     padding: 1rem;
@@ -318,3 +326,16 @@ h1 {
 /* Minor typography polish */
 .meta-box strong { font-weight: 700; }
 .meta-box span { color: #d1d5db; }
+
+/* Explanatory text under section titles */
+.info-text {
+    color: #9ca3af;
+    font-size: 0.9rem;
+    line-height: 1.5;
+    margin: 2px 0 8px 0;
+}
+
+/* Wider details area fix */
+.wide-block {
+    width: 100%;
+}

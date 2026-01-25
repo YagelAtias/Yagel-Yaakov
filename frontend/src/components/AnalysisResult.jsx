@@ -16,6 +16,7 @@ const AnalysisResult = ({ result }) => {
   const isSegmentMode = Array.isArray(wmd?.metadata?.segment_scores) && wmd.metadata.segment_scores.length > 0;
   const isVectorBased = !!wmd?.metadata?.is_vector_based;
   const topicWeights = wmd?.metadata?.topic_weights || {};
+  const topicLabels = wmd?.metadata?.topic_labels || {};
 
   // Build insights: top 3 contributing segments and top topics among them
   const segmentScores = isSegmentMode ? [...wmd.metadata.segment_scores] : [];
@@ -107,24 +108,21 @@ const AnalysisResult = ({ result }) => {
       {isSegmentMode && (
         <div className="meta-box insights-card">
           <div className="insights-header">
-            <strong>תובנות עיקריות</strong>
-            {typeof isVectorBased === 'boolean' && (
-              <span className={`badge ${isVectorBased ? 'vector' : 'fallback'}`}>
-                {isVectorBased ? 'וקטורי' : 'חלופי'}
-              </span>
-            )}
+            <strong>התובנות העיקריות נבעו מהניתוח הסמנטי</strong>
           </div>
           <div className="insights-body">
             <div className="insights-list">
               {topSegments.map((s) => (
                 <div key={s.index} className="insight-row">
-                  <span className="insight-left">
-                    <span className={`chip intensity ${s.intensity}`}>{s.intensity}</span>
-                    <span className="insight-score">{s.weighted}</span>
+                  <span className="insight-left" style={{ flex: 1, justifyContent: 'flex-start' }}>
+                    <span className="info-text" style={{ margin: 0 }}>
+                      משפט זה נאמר ב{s.intensity_he}: {s.snippet}
+                    </span>
                   </span>
-                  <span className="insight-right">
+                  <span className="insight-right" style={{ gap: 8 }}>
                     {(s.matched || []).slice(0, 2).map((m, i) => {
                       const id = m.topic || m.concept_id;
+                      const label = topicLabels[id] || id;
                       const tw = topicWeights[id] ?? 0.5;
                       let bg = '#2a2a2a';
                       if (tw >= 0.85) bg = '#f87171';
@@ -132,10 +130,11 @@ const AnalysisResult = ({ result }) => {
                       else if (tw >= 0.5) bg = '#fbbf24';
                       return (
                         <span key={i} className="chip topic" style={{ background: bg, color: '#111', border: 'none' }}>
-                          {id}
+                          {label}
                         </span>
                       );
                     })}
+                    <span className="insight-score">{s.weighted}</span>
                   </span>
                 </div>
               ))}
@@ -143,7 +142,7 @@ const AnalysisResult = ({ result }) => {
                 <div className="insight-summary">
                   <span className="summary-label">נושאים מובילים:</span>
                   {topTopics.map((t, i) => (
-                    <span key={i} className="chip topic" style={{ background: '#9ca3af', color: '#111', border: 'none' }}>{t}</span>
+                    <span key={i} className="chip topic" style={{ background: '#9ca3af', color: '#111', border: 'none' }}>{topicLabels[t] || t}</span>
                   ))}
                 </div>
               )}
@@ -156,12 +155,8 @@ const AnalysisResult = ({ result }) => {
         <div className="meta-box">
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <strong>ניתוח סמנטי</strong>
-            {typeof isVectorBased === 'boolean' && (
-              <span className={`badge ${isVectorBased ? 'vector' : 'fallback'}`}>
-                {isVectorBased ? 'וקטורי' : 'חלופי'}
-              </span>
-            )}
           </div>
+          <div className="info-text">עד כמה הטקסט קשור לנושאים קליניים כמו עצבות, ייאוש, עייפות ועוד.</div>
           <span>ציון סופי: {wmd?.score ?? 0}</span>
 
           {!isSegmentMode && (
@@ -189,38 +184,43 @@ const AnalysisResult = ({ result }) => {
                 {showSegments ? 'הסתר פירוט מקטעים' : 'הצג פירוט מקטעים'}
               </button>
               {showSegments && (
-                <div className="table-wrap">
+                <div className="table-wrap wide-block">
                   <table className="segments-table">
                     <thead>
                       <tr>
                         <th>#</th>
+                        <th>מקטע</th>
                         <th>עוצמה</th>
                         <th>בסיס</th>
                         <th>משוקלל</th>
-                        <th>שיטה</th>
-                        <th>התאמות לנושאים</th>
+                        <th>הסבר</th>
+                        <th>נושאים</th>
                       </tr>
                     </thead>
                     <tbody>
                       {wmd.metadata.segment_scores.map((row) => (
                         <tr key={row.index}>
                           <td>{row.index}</td>
-                          <td>
-                            <span className={`chip intensity ${row.intensity}`}>{row.intensity}</span>
-                          </td>
+                          <td style={{ maxWidth: 260 }}>{row.snippet}</td>
+                          <td><span className={`chip intensity ${row.intensity}`}>{row.intensity_he || row.intensity}</span></td>
                           <td>{row.base}</td>
                           <td style={{ fontWeight: 600 }}>{row.weighted}</td>
-                          <td><span className="chip method">{row.method}</span></td>
+                          <td>
+                            <span className="chip method">
+                              {row.method === 'cad_greedy' ? 'ניתוח נושאים' : row.method === 'keyword_fallback' ? 'מילות מפתח' : 'ללא התאמה' }
+                            </span>
+                          </td>
                           <td>
                             {(row.matched || []).slice(0, 2).map((m, i) => {
-                              const tw = topicWeights[m.topic || m.concept_id] ?? 0.5;
+                              const id = m.topic || m.concept_id;
+                              const tw = topicWeights[id] ?? 0.5;
                               let bg = '#2a2a2a';
                               if (tw >= 0.85) bg = '#f87171';
                               else if (tw >= 0.7) bg = '#f59e0b';
                               else if (tw >= 0.5) bg = '#fbbf24';
                               return (
                                 <span key={i} className="chip topic" style={{ background: bg, color: '#111', border: 'none' }}>
-                                  {m.topic || m.concept_id}
+                                  {topicLabels[id] || id}
                                 </span>
                               );
                             })}
@@ -237,6 +237,7 @@ const AnalysisResult = ({ result }) => {
 
         <div className="meta-box">
           <strong>ניתוח קוגניטיבי (Entropy)</strong>
+          <div className="info-text">חזרתיות גבוהה בטקסט יכולה להצביע על רומינציה. טקסט קצר מדי לא נותח.</div>
           <span>חזרתיות: {isRepetitive ? '⚠️ זיהוי רומינציה' : '✅ תקין'}</span>
           <span>ציון: {entropy?.score ?? 0}</span>
           {typeof entropy?.metadata?.compression_ratio !== 'undefined' && (
@@ -247,6 +248,7 @@ const AnalysisResult = ({ result }) => {
         {acoustic && (
           <div className="meta-box">
             <strong>סיכום עוצמות קול</strong>
+            <div className="info-text">סיכום החלוקה של המקטעים לפי לחישה, רגיל או צעקה.</div>
             {renderAcousticBar()}
             <div className="legend">
               <span className="legend-item"><i className="box whisper" /> לחישה</span>

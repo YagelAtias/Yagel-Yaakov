@@ -32,6 +32,19 @@ CLINICAL_TOPICS: List[Dict] = [
     {"id": "insomnia", "weight": 0.6, "words": ["נדודי שינה", "לא ישן", "לא ישנה", "לא הצלחתי לישון", "הפוך", "הפוכה", "ער כל הלילה", "מסתכל על התקרה"]},
 ]
 
+# Human-friendly Hebrew labels for topic ids (for UI display)
+TOPIC_LABELS: Dict[str, str] = {
+    "sadness": "עצבות",
+    "hopelessness": "ייאוש",
+    "rumination": "רומינציה",
+    "withdrawal": "הסתגרות",
+    "guilt": "אשמה",
+    "fatigue": "עייפות",
+    "self_harm_ideas": "מחשבות על פגיעה עצמית",
+    "anxiety_agitation": "חרדה/אי שקט",
+    "insomnia": "קשיי שינה",
+}
+
 
 class HebrewWMDSignal(DistressSignal):
     _model = None  # Class level variable to store the model once
@@ -318,17 +331,22 @@ class HebrewWMDSignal(DistressSignal):
 
             intensity = (seg.get("intensity") or "normal").lower()
             multiplier = INTENSITY_TO_MULTIPLIER.get(intensity, 1.0)
+            intensity_he = {"whisper": "לחישה", "normal": "רגיל", "shout": "צעקה"}.get(intensity, "רגיל")
             weighted_score = min(base_score * multiplier, 1.0)
+            # Short snippet for UI (first 40 chars)
+            snippet = seg_text if len(seg_text) <= 40 else (seg_text[:40] + "…")
 
             segment_scores.append({
                 "index": idx,
                 "intensity": intensity,
+                "intensity_he": intensity_he,
                 "multiplier": multiplier,
                 "base_distance": round(base_distance, 3),
                 "base": round(base_score, 3),
                 "weighted": round(weighted_score, 3),
                 "method": method,
-                "matched": matched[:5]  # cap for brevity
+                "matched": matched[:5],  # cap for brevity
+                "snippet": snippet
             })
 
             total_len += seg_len
@@ -343,6 +361,7 @@ class HebrewWMDSignal(DistressSignal):
                 "is_vector_based": True,
                 "segment_scores": segment_scores,
                 "topic_weights": {t["id"]: float(t.get("weight", 0.5)) for t in CLINICAL_TOPICS},
+                "topic_labels": TOPIC_LABELS,
                 "model_loaded": bool(self._model is not None),
                 "model_path": HebrewWMDSignal._model_path
             }
@@ -395,6 +414,7 @@ class HebrewWMDSignal(DistressSignal):
                 "segment_scores": segment_scores,
                 "topic_weights": {t["id"]: float(t.get("weight", 0.5)) for t in CLINICAL_TOPICS},
                 "reason": "semantic_model_not_loaded_or_no_centroids",
+                "topic_labels": TOPIC_LABELS,
                 "model_loaded": bool(self._model is not None),
                 "model_path": HebrewWMDSignal._model_path
             }
