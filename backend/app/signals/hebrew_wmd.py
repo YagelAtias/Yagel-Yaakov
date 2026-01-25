@@ -45,6 +45,13 @@ TOPIC_LABELS: Dict[str, str] = {
     "insomnia": "קשיי שינה",
 }
 
+# Topic-specific helpers
+# Anchors help nudge clear sleep complaints toward insomnia (and away from self-harm)
+INSOMNIA_ANCHORS = {"לישון", "שינה", "ישנתי", "נדודי", "לילה"}
+SELF_HARM_ANCHORS = {"מוות", "להיעלם", "קץ", "לחיות"}
+# Generic tokens to ignore when building the self-harm centroid (too broad on their own)
+SELF_HARM_IGNORE = {"די", "סוף"}
+
 
 class HebrewWMDSignal(DistressSignal):
     _model = None  # Class level variable to store the model once
@@ -444,6 +451,9 @@ class HebrewWMDSignal(DistressSignal):
             for item in raw_items:
                 # Reuse our tokenizer to strip punctuation and split Hebrew phrases safely
                 for tok in self._tokenize(str(item)):
+                    # Filter overly-generic tokens from self-harm centroid
+                    if topic.get("id") == "self_harm_ideas" and tok in SELF_HARM_IGNORE:
+                        continue
                     try:
                         # Try getting a vector (fastText supports OOV via subwords)
                         _ = self._model[tok]
@@ -486,6 +496,11 @@ class HebrewWMDSignal(DistressSignal):
         topics_left = set(centroids.keys())
         pairs = []  # for metadata
 
+        # Soft rules using anchors: if insomnia anchors present and self-harm not present,
+        # nudge costs to favor insomnia a bit and penalize self-harm slightly.
+        has_insomnia_anchor = any(t in INSOMNIA_ANCHORS for t in tokens)
+        has_selfharm_anchor = any(t in SELF_HARM_ANCHORS for t in tokens)
+
         # For each token pick the closest topic, then match best pairs first
         candidates = []
         for t in token_vecs.keys():
@@ -495,11 +510,17 @@ class HebrewWMDSignal(DistressSignal):
                 sim = self._cosine(token_vecs[t], cvec)
                 # Base distance
                 cost = 1.0 - sim
-                # Lower the cost a bit for more severe topics so they count more
-                cost *= (1.0 - 0.5 * sev)
+                # Lower the cost slightly for more severe topics so they count more (milder than before)
+                cost *= (1.0 - 0.25 * sev)
                 # If negation words exist, push the cost up slightly
                 if has_negation:
                     cost += 0.05
+                # Anchor-based tweak (only small nudges):
+                if has_insomnia_anchor and not has_selfharm_anchor:
+                    if tid == "self_harm_ideas":
+                        cost += 0.20
+                    elif tid == "insomnia":
+                        cost -= 0.10
                 if cost < best_cost:
                     best_cost = cost
                     best_topic = tid
