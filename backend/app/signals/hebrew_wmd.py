@@ -1,4 +1,6 @@
+import os
 import numpy as np
+from pathlib import Path
 from gensim.models import KeyedVectors
 from .clinical_lexicon import CLINICAL_WEIGHTS
 from .signal_base import DistressSignal
@@ -37,15 +39,52 @@ class HebrewWMDSignal(DistressSignal):
     def __init__(self):
         # Only load the model if it hasn't been loaded yet
         if HebrewWMDSignal._model is None:
-            print("Loading Hebrew Semantic Brain... Please wait.")
+            print("Loading Hebrew semantic model... please wait.")
+            # Try several common locations and an environment variable
+            env_path = os.environ.get("HE_MODEL_PATH")
+            try_paths = []
+            if env_path:
+                try_paths.append(Path(env_path))
+
+            # Project structure: <root>/backend/app/signals/hebrew_wmd.py
+            # Compute root and common model folders
             try:
-                # Load the model
-                HebrewWMDSignal._model = KeyedVectors.load_word2vec_format(
-                    'app/models/he_model_small.bin', binary=True
-                )
-                print("Model loaded successfully!")
-            except Exception as e:
-                print(f"Warning: Model not found. Falling back to keyword mode. {e}")
+                project_root = Path(__file__).resolve().parents[3]
+            except Exception:
+                project_root = Path.cwd()
+
+            try_paths.extend([
+                project_root / "backend" / "app" / "models" / "he_model_small.bin",
+                project_root / "backend" / "models" / "he_model_small.bin",
+                project_root / "models" / "he_model_small.bin",
+                # Legacy relative path from working directory
+                Path("app/models/he_model_small.bin").resolve()
+            ])
+
+            model_loaded = False
+            last_error = None
+            for p in try_paths:
+                try:
+                    if not p.exists():
+                        continue
+                    HebrewWMDSignal._model = KeyedVectors.load_word2vec_format(str(p), binary=True)
+                    # Prepare norms for stable cosine operations (gensim optimization)
+                    try:
+                        HebrewWMDSignal._model.fill_norms(force=True)
+                    except Exception:
+                        pass
+                    print(f"Semantic model loaded from: {p}")
+                    model_loaded = True
+                    break
+                except Exception as e:
+                    last_error = e
+                    continue
+
+            if not model_loaded:
+                msg = "Model not found in expected locations. Using keyword fallback."
+                if last_error:
+                    msg += f" Last error: {last_error}"
+                print(f"Warning: {msg}")
 
         self._model = HebrewWMDSignal._model
 
