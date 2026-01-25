@@ -261,3 +261,60 @@ h1 {
     justify-content: space-between;
     margin-bottom: 10px;
 }
+
+/* Modern badges */
+.badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 2px 10px;
+    border-radius: 999px;
+    font-size: 12px;
+    letter-spacing: .2px;
+    border: 1px solid rgba(255,255,255,0.08);
+}
+.badge.vector { background: #d1fae5; color: #064e3b; }
+.badge.fallback { background: #fee2e2; color: #7f1d1d; }
+
+/* Insights card */
+.insights-card {
+    background: linear-gradient(180deg, rgba(36,36,36,.9), rgba(24,24,24,.9));
+    border: 1px solid #2d2d2d;
+    border-radius: 12px;
+    padding: 1rem;
+}
+.insights-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 8px;
+}
+.insights-list { display: flex; flex-direction: column; gap: 8px; }
+.insight-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.insight-left { display: flex; align-items: center; gap: 8px; }
+.insight-right { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.insight-score { background: #242424; padding: 2px 8px; border-radius: 6px; font-weight: 600; }
+.insight-summary { margin-top: 6px; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.summary-label { color: #aaa; font-size: 0.9rem; }
+
+/* Intensity chips */
+.chip.intensity.whisper { background: #dbeafe; color: #1e3a8a; border: none; }
+.chip.intensity.normal { background: #e5e7eb; color: #1f2937; border: none; }
+.chip.intensity.shout { background: #fee2e2; color: #7f1d1d; border: none; }
+
+/* Toggle button */
+.toggle-btn {
+    background: #2b2b2b;
+    color: #e5e7eb;
+    border: 1px solid #3a3a3a;
+    border-radius: 8px;
+    padding: 8px 12px;
+    cursor: pointer;
+    transition: background .2s, transform .1s;
+}
+.toggle-btn:hover { background: #343434; }
+.toggle-btn:active { transform: translateY(1px); }
+
+/* Minor typography polish */
+.meta-box strong { font-weight: 700; }
+.meta-box span { color: #d1d5db; }
