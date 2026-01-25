@@ -1,6 +1,7 @@
-import React from 'react';
+import React, { useState } from 'react';
 
 const AnalysisResult = ({ result }) => {
+  const [showSegments, setShowSegments] = useState(false);
   const getScoreColor = (score) => {
     if (score < 0.4) return '#4ade80'; // Green
     if (score < 0.7) return '#fbbf24'; // Yellow
@@ -13,7 +14,24 @@ const AnalysisResult = ({ result }) => {
   const isRepetitive = entropy?.metadata?.is_repetitive;
 
   const isSegmentMode = Array.isArray(wmd?.metadata?.segment_scores) && wmd.metadata.segment_scores.length > 0;
+  const isVectorBased = !!wmd?.metadata?.is_vector_based;
   const topicWeights = wmd?.metadata?.topic_weights || {};
+
+  // Build insights: top 3 contributing segments and top topics among them
+  const segmentScores = isSegmentMode ? [...wmd.metadata.segment_scores] : [];
+  const topSegments = segmentScores
+    .sort((a, b) => (b?.weighted ?? 0) - (a?.weighted ?? 0))
+    .slice(0, 3);
+  const topicCount = {};
+  topSegments.forEach(s => (s.matched || []).forEach(m => {
+    const t = m.topic || m.concept_id;
+    if (!t) return;
+    topicCount[t] = (topicCount[t] || 0) + 1;
+  }));
+  const topTopics = Object.entries(topicCount)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 3)
+    .map(([t]) => t);
 
   const ProgressBar = ({ value }) => (
     <div className="progress" title={`מדד: ${Math.round(value * 100)}%`}>
@@ -86,9 +104,64 @@ const AnalysisResult = ({ result }) => {
         </div>
       </div>
 
+      {isSegmentMode && (
+        <div className="meta-box insights-card">
+          <div className="insights-header">
+            <strong>תובנות עיקריות</strong>
+            {typeof isVectorBased === 'boolean' && (
+              <span className={`badge ${isVectorBased ? 'vector' : 'fallback'}`}>
+                {isVectorBased ? 'וקטורי' : 'חלופי'}
+              </span>
+            )}
+          </div>
+          <div className="insights-body">
+            <div className="insights-list">
+              {topSegments.map((s) => (
+                <div key={s.index} className="insight-row">
+                  <span className="insight-left">
+                    <span className={`chip intensity ${s.intensity}`}>{s.intensity}</span>
+                    <span className="insight-score">{s.weighted}</span>
+                  </span>
+                  <span className="insight-right">
+                    {(s.matched || []).slice(0, 2).map((m, i) => {
+                      const id = m.topic || m.concept_id;
+                      const tw = topicWeights[id] ?? 0.5;
+                      let bg = '#2a2a2a';
+                      if (tw >= 0.85) bg = '#f87171';
+                      else if (tw >= 0.7) bg = '#f59e0b';
+                      else if (tw >= 0.5) bg = '#fbbf24';
+                      return (
+                        <span key={i} className="chip topic" style={{ background: bg, color: '#111', border: 'none' }}>
+                          {id}
+                        </span>
+                      );
+                    })}
+                  </span>
+                </div>
+              ))}
+              {topTopics.length > 0 && (
+                <div className="insight-summary">
+                  <span className="summary-label">נושאים מובילים:</span>
+                  {topTopics.map((t, i) => (
+                    <span key={i} className="chip topic" style={{ background: '#9ca3af', color: '#111', border: 'none' }}>{t}</span>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="results-grid" style={{ marginTop: '20px' }}>
         <div className="meta-box">
-          <strong>ניתוח סמנטי</strong>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <strong>ניתוח סמנטי</strong>
+            {typeof isVectorBased === 'boolean' && (
+              <span className={`badge ${isVectorBased ? 'vector' : 'fallback'}`}>
+                {isVectorBased ? 'וקטורי' : 'חלופי'}
+              </span>
+            )}
+          </div>
           <span>ציון סופי: {wmd?.score ?? 0}</span>
 
           {!isSegmentMode && (
@@ -112,46 +185,52 @@ const AnalysisResult = ({ result }) => {
 
           {isSegmentMode && (
             <div style={{ marginTop: 10 }}>
-              <div style={{ fontWeight: 'bold', marginBottom: 6 }}>פירוט מקטעים</div>
-              <div className="table-wrap">
-                <table className="segments-table">
-                  <thead>
-                    <tr>
-                      <th>#</th>
-                      <th>עוצמה</th>
-                      <th>בסיס</th>
-                      <th>משוקלל</th>
-                      <th>שיטה</th>
-                      <th>התאמות לנושאים</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {wmd.metadata.segment_scores.map((row) => (
-                      <tr key={row.index}>
-                        <td>{row.index}</td>
-                        <td>{row.intensity}</td>
-                        <td>{row.base}</td>
-                        <td style={{ fontWeight: 600 }}>{row.weighted}</td>
-                        <td><span className="chip method">{row.method}</span></td>
-                        <td>
-                          {(row.matched || []).slice(0, 3).map((m, i) => {
-                            const tw = topicWeights[m.topic || m.concept_id] ?? 0.5;
-                            let bg = '#2a2a2a';
-                            if (tw >= 0.85) bg = '#f87171';
-                            else if (tw >= 0.7) bg = '#f59e0b';
-                            else if (tw >= 0.5) bg = '#fbbf24';
-                            return (
-                              <span key={i} className="chip topic" style={{ background: bg, color: '#111', border: 'none' }}>
-                                {m.topic || m.concept_id}
-                              </span>
-                            );
-                          })}
-                        </td>
+              <button className="toggle-btn" onClick={() => setShowSegments(v => !v)}>
+                {showSegments ? 'הסתר פירוט מקטעים' : 'הצג פירוט מקטעים'}
+              </button>
+              {showSegments && (
+                <div className="table-wrap">
+                  <table className="segments-table">
+                    <thead>
+                      <tr>
+                        <th>#</th>
+                        <th>עוצמה</th>
+                        <th>בסיס</th>
+                        <th>משוקלל</th>
+                        <th>שיטה</th>
+                        <th>התאמות לנושאים</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+                    </thead>
+                    <tbody>
+                      {wmd.metadata.segment_scores.map((row) => (
+                        <tr key={row.index}>
+                          <td>{row.index}</td>
+                          <td>
+                            <span className={`chip intensity ${row.intensity}`}>{row.intensity}</span>
+                          </td>
+                          <td>{row.base}</td>
+                          <td style={{ fontWeight: 600 }}>{row.weighted}</td>
+                          <td><span className="chip method">{row.method}</span></td>
+                          <td>
+                            {(row.matched || []).slice(0, 2).map((m, i) => {
+                              const tw = topicWeights[m.topic || m.concept_id] ?? 0.5;
+                              let bg = '#2a2a2a';
+                              if (tw >= 0.85) bg = '#f87171';
+                              else if (tw >= 0.7) bg = '#f59e0b';
+                              else if (tw >= 0.5) bg = '#fbbf24';
+                              return (
+                                <span key={i} className="chip topic" style={{ background: bg, color: '#111', border: 'none' }}>
+                                  {m.topic || m.concept_id}
+                                </span>
+                              );
+                            })}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
             </div>
           )}
         </div>
