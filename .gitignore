@@ -1,6 +1,9 @@
 # Large Models & AI Data
-backend/app/models/*.bin
-backend/app/models/*.vec
+backend/app/models
+
+# Project documents
+docs
+Project submissions and presentations
 
 # Python & FastAPI
 __pycache__/
