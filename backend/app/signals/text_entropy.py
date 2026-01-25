@@ -24,7 +24,7 @@ class EntropySignal(DistressSignal):
             return {"score": 0.0, "metadata": {"error": "Invalid Input"}}
 
         if len(text) < MIN_TEXT_LENGTH:
-            return {"score": 0.0, "met adata": {"skip_reason": "text_too_short"}}
+            return {"score": 0.0, "metadata": {"skip_reason": "text_too_short"}}
 
         # Type conversion to bytes and compression using Deflate algorithm (LZ77 and Huffman Coding)
         encoded_data = text.encode("utf-8")
