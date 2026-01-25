@@ -221,7 +221,8 @@ class HebrewWMDSignal(DistressSignal):
             "metadata": {
                 "algorithm": "custom_wmd_cad",
                 "is_vector_based": True,
-                "segment_scores": segment_scores
+                "segment_scores": segment_scores,
+                "topic_weights": {t["id"]: float(t.get("weight", 0.5)) for t in CLINICAL_TOPICS}
             }
         }
 
@@ -270,6 +271,7 @@ class HebrewWMDSignal(DistressSignal):
                 "algorithm": "keyword_fallback_segments",
                 "is_vector_based": False,
                 "segment_scores": segment_scores,
+                "topic_weights": {t["id"]: float(t.get("weight", 0.5)) for t in CLINICAL_TOPICS},
                 "reason": "semantic_model_not_loaded_or_no_centroids"
             }
         }
