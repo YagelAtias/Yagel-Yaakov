@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 
 const AnalysisResult = ({ result }) => {
   const [showSegments, setShowSegments] = useState(false);
+  const [detailsPage, setDetailsPage] = useState(false); // dedicated full-width details view
   const getScoreColor = (score) => {
     if (score < 0.4) return '#4ade80'; // Green
     if (score < 0.7) return '#fbbf24'; // Yellow
@@ -17,6 +18,7 @@ const AnalysisResult = ({ result }) => {
   const isVectorBased = !!wmd?.metadata?.is_vector_based;
   const topicWeights = wmd?.metadata?.topic_weights || {};
   const topicLabels = wmd?.metadata?.topic_labels || {};
+  const hasCritical = !!wmd?.metadata?.has_critical_alert;
 
   // Build insights: top 3 contributing segments and top topics among them
   const segmentScores = isSegmentMode ? [...wmd.metadata.segment_scores] : [];
@@ -88,6 +90,91 @@ const AnalysisResult = ({ result }) => {
     );
   };
 
+  // Build a short explanation per segment (day-to-day wording)
+  const explainRow = (row) => {
+    // Critical alert
+    if (row.critical_alert) {
+      return 'ייתכן ויש כוונה לפגיעה עצמית, יש צורך בהתייחסות מיידית!';
+    }
+    // Neutral segment
+    if (row.method === 'neutral') {
+      return 'מקטע נטרלי, לא נמצאה התאמה משמעותית לנושאים קליניים.';
+    }
+    // Topics explanation
+    const topics = (row.matched || [])
+      .slice(0, 2)
+      .map(m => topicLabels[m.topic || m.concept_id] || (m.topic || m.concept_id));
+    const topicsText = topics.length ? `נושאים מזוהים: ${topics.join(', ')}` : 'אין נושאים חזקים';
+    // Intensity and multiplier
+    const intensityText = row.intensity_he ? `עוצמה: ${row.intensity_he}` : '';
+    // Base vs weighted
+    const baseText = typeof row.base === 'number' && row.base !== row.weighted ? `הוגבר מ-${row.base} לפי העוצמה` : '';
+    // Build
+    return [topicsText, intensityText, baseText].filter(Boolean).join(' · ');
+  };
+
+  // Dedicated full-width details page (semantic segments only)
+  const renderDetailsPage = () => (
+    <div className="results-container" style={{ paddingTop: 16 }}>
+      <div className="meta-box" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <strong>פירוט מקטעים</strong>
+        <button className="toggle-btn" onClick={() => setDetailsPage(false)}>חזרה לסיכום</button>
+      </div>
+      <div className="detail-controls" style={{ marginTop: 8 }}>
+        <span className="info-text">פירוט ברור לכל מקטע: ציון, נושאים והסבר קצר. אם מוצגת התראה קריטית, המדד הכללי הודגש לצורך תשומת לב.</span>
+      </div>
+      <div className="segment-cards">
+        {segmentScores.map((row) => (
+          <div key={row.index} className="seg-card" dir="rtl">
+            <div className="seg-head">
+              <div className="seg-title" title={row.snippet}>
+                משפט זה נאמר ב{row.intensity_he || row.intensity}: {row.snippet}
+              </div>
+              <div className="seg-score" title={`ציון משוקלל ${row.weighted}`}>{row.weighted}</div>
+            </div>
+            <div className="seg-topics">
+              {(row.matched||[]).slice(0,3).map((m,i)=>{
+                const id = m.topic || m.concept_id;
+                const label = topicLabels[id] || id;
+                return <span key={i} className="chip topic" title={`התאמה ל${label}`}>{label}</span>
+              })}
+              {row.critical_alert && (
+                <span className="badge fallback" style={{ marginInlineStart: 8 }}>התראה קריטית</span>
+              )}
+            </div>
+            <div className="info-text" style={{ marginTop: 6 }}>{explainRow(row)}</div>
+            <details className="seg-more">
+              <summary>פרטים</summary>
+              <div className="seg-meta">
+                <div className="seg-meta-item">
+                  <span className="seg-meta-label">שיטה: </span>
+                  <span className="seg-meta-value">{row.method === 'cad_greedy' ? 'ניתוח סמנטי' : row.method === 'keyword_fallback' ? 'התאמת מילות מפתח' : row.method === 'neutral' ? 'נייטרלי' : 'ללא התאמה'}</span>
+                </div>
+                <div className="seg-meta-item">
+                  <span className="seg-meta-label">ציון בסיסי (לפני השפעת עוצמת הקול): </span>
+                  <span className="seg-meta-value">{row.base}</span>
+                </div>
+                <div className="seg-meta-item">
+                  <span className="seg-meta-label">קרבה לנושאים קליניים של מצוקה או דיכאון (גבוה = קרוב): </span>
+                  <span className="seg-meta-value">{(1 - Number(row.base_distance || 0)).toFixed(2)}</span>
+                </div>
+                <div className="seg-meta-item">
+                  <span className="seg-meta-label">עוצמת קול: </span>
+                  <span className="seg-meta-value">{row.intensity_he || row.intensity}</span>
+                </div>
+              </div>
+            </details>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+
+  // If details mode is active, only show the semantic details page (hide other analyses)
+  if (detailsPage && isSegmentMode) {
+    return renderDetailsPage();
+  }
+
   return (
     <div className="results-container">
       <div className="score-box">
@@ -109,6 +196,11 @@ const AnalysisResult = ({ result }) => {
         <div className="meta-box insights-card">
           <div className="insights-header">
             <strong>התובנות העיקריות נבעו מהניתוח הסמנטי</strong>
+            {hasCritical && (
+              <span className="badge fallback" title="הודגש לצורך התרעה בדמו">
+                התראה קריטית
+              </span>
+            )}
           </div>
           <div className="insights-body">
             <div className="insights-list">
@@ -120,6 +212,9 @@ const AnalysisResult = ({ result }) => {
                     </span>
                   </span>
                   <span className="insight-right" style={{ gap: 8 }}>
+                    {/* Score first */}
+                    <span className="insight-score">{s.weighted}</span>
+                    {/* Then topics on the right of the score */}
                     {(s.matched || []).slice(0, 2).map((m, i) => {
                       const id = m.topic || m.concept_id;
                       const label = topicLabels[id] || id;
@@ -134,7 +229,10 @@ const AnalysisResult = ({ result }) => {
                         </span>
                       );
                     })}
-                    <span className="insight-score">{s.weighted}</span>
+                    {/* Critical badge at the far end */}
+                    {s.critical_alert && (
+                      <span className="badge fallback" style={{ marginInlineStart: 6 }}>התראה קריטית</span>
+                    )}
                   </span>
                 </div>
               ))}
@@ -146,6 +244,12 @@ const AnalysisResult = ({ result }) => {
                   ))}
                 </div>
               )}
+              {hasCritical && (
+                <div className="info-text" style={{ marginTop: 8 }}>
+                  זוהתה התראה קריטית במקטע אחד או יותר. לכן הציון הכללי עלה. מומלצת התייחסות מיידית של הצוות.
+                </div>
+              )}
+              <div style={{ marginTop: 10 }} />
             </div>
           </div>
         </div>
@@ -180,57 +284,7 @@ const AnalysisResult = ({ result }) => {
 
           {isSegmentMode && (
             <div style={{ marginTop: 10 }}>
-              <button className="toggle-btn" onClick={() => setShowSegments(v => !v)}>
-                {showSegments ? 'הסתר פירוט מקטעים' : 'הצג פירוט מקטעים'}
-              </button>
-              {showSegments && (
-                <div className="table-wrap wide-block">
-                  <table className="segments-table">
-                    <thead>
-                      <tr>
-                        <th>#</th>
-                        <th>מקטע</th>
-                        <th>עוצמה</th>
-                        <th>בסיס</th>
-                        <th>משוקלל</th>
-                        <th>הסבר</th>
-                        <th>נושאים</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {wmd.metadata.segment_scores.map((row) => (
-                        <tr key={row.index}>
-                          <td>{row.index}</td>
-                          <td style={{ maxWidth: 260 }}>{row.snippet}</td>
-                          <td><span className={`chip intensity ${row.intensity}`}>{row.intensity_he || row.intensity}</span></td>
-                          <td>{row.base}</td>
-                          <td style={{ fontWeight: 600 }}>{row.weighted}</td>
-                          <td>
-                            <span className="chip method">
-                              {row.method === 'cad_greedy' ? 'ניתוח נושאים' : row.method === 'keyword_fallback' ? 'מילות מפתח' : 'ללא התאמה' }
-                            </span>
-                          </td>
-                          <td>
-                            {(row.matched || []).slice(0, 2).map((m, i) => {
-                              const id = m.topic || m.concept_id;
-                              const tw = topicWeights[id] ?? 0.5;
-                              let bg = '#2a2a2a';
-                              if (tw >= 0.85) bg = '#f87171';
-                              else if (tw >= 0.7) bg = '#f59e0b';
-                              else if (tw >= 0.5) bg = '#fbbf24';
-                              return (
-                                <span key={i} className="chip topic" style={{ background: bg, color: '#111', border: 'none' }}>
-                                  {topicLabels[id] || id}
-                                </span>
-                              );
-                            })}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
+              <button className="toggle-btn" onClick={() => setDetailsPage(true)}>הצג פירוט מקטעים</button>
             </div>
           )}
         </div>
