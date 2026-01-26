@@ -60,7 +60,18 @@ async def analyze_all_signals(request: DistressAnalysisRequest):
 
     # Combine the meaning and repetition scores and cap at 1.0
     fused = 0.6 * (wmd_res.get("score", 0.0)) + 0.4 * (entropy_res.get("score", 0.0))
-    overall_score = round(min(fused, 1.0), 2)
+    overall_score = min(fused, 1.0)
+
+    # Critical override: if any segment has a critical alert (e.g., self-harm),
+    # raise the overall score so the main gauge signals urgency during demo.
+    try:
+        has_critical = bool(wmd_res.get("metadata", {}).get("has_critical_alert"))
+    except Exception:
+        has_critical = False
+    if has_critical:
+        # Strong override for the prototype demo; adjust to 0.9 if you prefer softer.
+        overall_score = max(overall_score, 0.95)
+    overall_score = round(overall_score, 2)
 
     signals = {
         "entropy": entropy_res,
