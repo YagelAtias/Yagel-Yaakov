@@ -41,7 +41,7 @@ CLINICAL_TOPICS: List[Dict] = [
         "רוצה לגמור עם זה", "לחדול"
     ]},
     {"id": "anxiety_agitation", "weight": 0.7, "words": ["חרדה", "לחץ", "חוסר מנוחה", "דפיקות לב", "מחנק", "משתגע", "משתגעת", "מתוח", "מתוחה", "קצר בנשימה"]},
-    {"id": "insomnia", "weight": 0.6, "words": ["נדודי שינה", "לא ישן", "לא ישנה", "לא הצלחתי לישון", "הפוך", "הפוכה", "ער כל הלילה", "מסתכל על התקרה"]},
+    {"id": "insomnia", "weight": 0.6, "words": ["נדודי שינה", "לא ישן", "לא ישנה", "לא הצלחתי לישון", "הפוך", "הפוכה", "ער כל הלילה", "מסתכל על התקרה", "לישון", "שינה"]},
 ]
 
 # --- 2. Neutral (Control) Topics ---
@@ -50,7 +50,7 @@ CLINICAL_TOPICS: List[Dict] = [
 # instead of defaulting to "Anxiety" or "Insomnia".
 NEUTRAL_TOPICS: List[Dict] = [
     {"id": "school_academic", "weight": 0.0, "words": ["מבחן", "שיעורי בית", "ללמוד", "כיתה", "מורה", "ציון", "מתמטיקה", "היסטוריה", "ספרות", "ביולוגיה", "מחברת", "ספר", "שאלה", "תשובה"]},
-    {"id": "daily_routine", "weight": 0.0, "words": ["אוכל", "לישון", "חברים", "משחק", "הפסקה", "בוקר", "ערב", "טלפון", "מקלחת", "בגד", "אוטובוס", "הולך", "חוזר"]},
+    {"id": "daily_routine", "weight": 0.0, "words": ["אוכל", "לישון", "חברים", "משחק", "הפסקה", "בוקר", "ערב", "טלפון", "מקלחת", "בגד", "אוטובוס", "הולך", "חוזר", "שינה"]},
     {"id": "positive_mood", "weight": 0.0, "words": ["שמח", "כיף", "מצחיק", "נהנה", "טוב", "סבבה", "אחלה", "רגוע", "אוהב", "מעולה", "מצויין"]}
 ]
 
@@ -70,18 +70,19 @@ TOPIC_LABELS: Dict[str, str] = {
     "positive_mood": "חיובי"
 }
 
-# --- Anchors for Hard-Coding Critical Matches ---
+# --- Anchors & Constants ---
+# I use these anchor sets to perform safety checks and context window analysis.
 INSOMNIA_ANCHORS = {"לישון", "שינה", "ישנתי", "נדודי", "לילה"}
-# I included base forms here to ensure we catch self-harm even if normalization fails
+# I included base forms here to ensure we catch self-harm even if normalization fails.
 SELF_HARM_ANCHORS = {"מוות", "למות", "להיעלם", "קץ", "להתאבד", "התאבדות", "אתאבד", "להרוג", "להרוג את עצמי", "לא לחיות", "התאבד"}
 SELF_HARM_IGNORE = {"די", "סוף"} # Context dependent ignore list
 ANXIETY_ANCHORS = {"חרדה", "לחץ", "לחוצה", "לחוץ", "בלחץ", "מתוח"}
 HOPELESSNESS_ANCHORS = {"ייאוש", "מיואש", "מיואשת", "אבוד", "אבודה"}
-
 # Words to ignore during the semantic match (too generic)
-NEUTRAL_IGNORE = {
-    "מחר", "היום", "מחרתיים", "יש", "אלך", "אילך", "אעלה", "אבוא"
-}
+NEUTRAL_IGNORE = {"מחר", "היום", "מחרתיים", "יש", "אלך", "אילך", "אעלה", "אבוא"}
+
+# Words implying negation or difficulty. I use these for the 'window logic' to detect context.
+DISTRESS_CONTEXT_WORDS = {'לא', 'אין', 'בלי', 'קשה', 'איני', 'בלתי', 'נורא', 'סיוט', 'רע', 'אפס'}
 
 def _normalize_token(tok: str) -> str:
     """
@@ -92,7 +93,7 @@ def _normalize_token(tok: str) -> str:
     if not tok:
         return tok
 
-    # Protection List: These words must remain untouched.
+    # Protection List: These words must remain untouched to preserve their semantic meaning.
     PROTECTED_WORDS = {
         "מיואש", "מיואשת",
         "מדוכא", "מדוכאת",
@@ -102,7 +103,8 @@ def _normalize_token(tok: str) -> str:
         "מסכן", "מסכנה",
         "מפחד", "מפחדת",
         "לבד",
-        "להתאבד", "התאבדות", "אתאבד" # Critical: prevents stripping the 'L' or 'H'
+        "לישון", "שינה", "ישן", "נרדם", # Protected for Insomnia detection
+        "להתאבד", "התאבדות", "אתאבד" # Critical for safety override
     }
 
     if tok in PROTECTED_WORDS:
@@ -119,7 +121,8 @@ def _normalize_token(tok: str) -> str:
         "לחוצה": "לחוץ",
         "מיואשת": "מיואש",
         "מדוכאת": "מדוכא",
-        "בדידות": "לבד"
+        "בדידות": "לבד",
+        "טובה": "טוב"
     }
     tok = repl.get(tok, tok)
     return tok
@@ -304,8 +307,12 @@ class HebrewWMDSignal(DistressSignal):
             seg_text = (seg.get("text") or "").strip()
             if not seg_text: continue
 
+            # Create two token lists:
+            # 1. Raw (for proximity checking)
+            # 2. Filtered (for semantic matching)
             tokens_raw = self._tokenize(seg_text)
             has_neg = any(t in {"לא", "אין", "בלי"} for t in tokens_raw)
+
             tokens = [t for t in tokens_raw if t not in HE_STOPWORDS]
             norm_tokens = [_normalize_token(t) for t in tokens]
             norm_tokens = [t for t in norm_tokens if t not in NEUTRAL_IGNORE]
@@ -321,20 +328,87 @@ class HebrewWMDSignal(DistressSignal):
                 # Calculate semantic distance to topics
                 dist, best_topic, pairs = self._calculate_relaxed_wmd(norm_tokens, topic_docs, has_neg)
 
-                # Filter False Positives:
-                # If the text is closer to a Neutral topic (like 'School') than to Distress,
-                # I discard the distress score.
-                if best_topic in neutral_ids:
+                # --- CONTEXT CHECKER HELPER (WINDOW LOGIC) ---
+                # I use this to solve context ambiguity. For example:
+                # "I love to sleep" (Neutral) vs "I can't sleep" (Insomnia).
+                def _check_negation_window(target_roots):
+                    """Returns True if any target root is preceded by distress/negation within 3 words."""
+                    matched_tokens = [m['token'] for m in pairs]
+                    # Check against the normalized tokens in the whole segment, not just matches
+                    is_target_word = any(t in target_roots for t in norm_tokens)
+                    if not is_target_word: return False
+
+                    # Window Check using raw tokens
+                    for i, t in enumerate(tokens_raw):
+                        norm_t = _normalize_token(t)
+                        if norm_t in target_roots:
+                            start_window = max(0, i - 3)
+                            window = tokens_raw[start_window:i]
+                            # Check if any word in the window is a distress indicator
+                            if any(_normalize_token(w) in DISTRESS_CONTEXT_WORDS for w in window):
+                                return True
+                    return False
+
+                # --- 1. OVERRIDE: INSOMNIA LOGIC ---
+                # I perform this check *before* standard classification.
+                sleep_roots = {'לישון', 'ישן', 'שינה', 'נרדם'}
+                is_distressed_sleep = _check_negation_window(sleep_roots)
+
+                # HYBRID LOGIC:
+                # If we detect Insomnia context, we make sure it's reflected.
+                if is_distressed_sleep:
+                    # Check if the vector model already found a DIFFERENT Distress topic (e.g. Rumination)
+                    is_vector_distress = best_topic not in neutral_ids and best_topic != "insomnia"
+
+                    if is_vector_distress:
+                        # Case: Complex Distress (e.g. "Rumination" + "Insomnia")
+                        # Keep the vector topic (Rumination) to show depth, but INJECT Insomnia into matches.
+                        base_score = max(float(1.0 - dist), 0.85) # Ensure high score
+                        matched_token = next((t for t in norm_tokens if t in sleep_roots), "שינה")
+                        # Prepend Insomnia match so it shows as a chip
+                        pairs.insert(0, {"token": matched_token, "matched_to": "נדודי שינה", "topic": "insomnia", "cost": 0.0})
+                        matched = pairs
+                        method = "hybrid_distress"
+                    else:
+                        # Case: Pure Insomnia or vector was Neutral
+                        best_topic = "insomnia"
+                        base_score = 0.85
+                        method = "explicit_symptom"
+                        if not matched:
+                            matched = [{"token": "שינה", "topic": "insomnia", "cost": 0.1}]
+
+                # --- 2. LOGIC: HANDLE FALSE POSITIVES & FLIPS ---
+                # Only proceed if we haven't already decided via Override
+                elif best_topic == "insomnia":
+                    # If Insomnia won the vectors but failed the window check -> Force Neutral.
+                    best_topic = "daily_routine"
+                    base_score = 0.0
+                    method = "neutral_forced_sleep"
+                    matched = []
+
+                elif best_topic == "positive_mood":
+                    # Check for "Positive Flip" (Good + Negation = Bad)
+                    positive_roots = {'טוב', 'שמח', 'כיף', 'נהנה', 'רגוע', 'מעולה', 'סבבה', 'אחלה'}
+                    is_negated_positive = _check_negation_window(positive_roots)
+
+                    if is_negated_positive:
+                        best_topic = "sadness"
+                        sim = max(0.0, 1.0 - dist)
+                        base_score = float(sim)
+                        method = "negated_positive_flip"
+
+                # --- 3. FINAL NEUTRAL FILTER ---
+                # If we are in standard WMD mode and still pointing to neutral -> Clear score.
+                if best_topic in neutral_ids and method == "relaxed_wmd":
                     base_score = 0.0
                     method = "neutral_match"
                     matched = []
-                else:
-                    # Convert distance to similarity score
+                elif method == "relaxed_wmd":
+                    # Standard vector scoring calculation
                     sim = max(0.0, 1.0 - dist)
                     base_score = float(sim)
                     matched = pairs
-
-                    # Apply penalty for negation (e.g., "I am not sad")
+                    # Negation penalty for standard cases (unless we flipped or overrode)
                     if has_neg and base_score > 0.2:
                         base_score *= 0.5
 
