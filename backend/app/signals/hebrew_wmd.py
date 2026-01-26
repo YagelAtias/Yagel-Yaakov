@@ -73,8 +73,10 @@ TOPIC_LABELS: Dict[str, str] = {
 # --- Anchors & Constants ---
 # I use these anchor sets to perform safety checks and context window analysis.
 INSOMNIA_ANCHORS = {"לישון", "שינה", "ישנתי", "נדודי", "לילה"}
-# I included base forms here to ensure we catch self-harm even if normalization fails.
-SELF_HARM_ANCHORS = {"מוות", "למות", "להיעלם", "קץ", "להתאבד", "התאבדות", "אתאבד", "להרוג", "להרוג את עצמי", "לא לחיות", "התאבד"}
+
+# I removed multi-word phrases (like "lo lichyot") because tokenizer splits them.
+# Instead, I rely on single keywords and the logic below to catch the phrases.
+SELF_HARM_ANCHORS = {"מוות", "למות", "להיעלם", "קץ", "להתאבד", "התאבדות", "אתאבד", "להרוג"}
 SELF_HARM_IGNORE = {"די", "סוף"} # Context dependent ignore list
 ANXIETY_ANCHORS = {"חרדה", "לחץ", "לחוצה", "לחוץ", "בלחץ", "מתוח"}
 HOPELESSNESS_ANCHORS = {"ייאוש", "מיואש", "מיואשת", "אבוד", "אבודה"}
@@ -82,7 +84,8 @@ HOPELESSNESS_ANCHORS = {"ייאוש", "מיואש", "מיואשת", "אבוד", 
 NEUTRAL_IGNORE = {"מחר", "היום", "מחרתיים", "יש", "אלך", "אילך", "אעלה", "אבוא"}
 
 # Words implying negation or difficulty. I use these for the 'window logic' to detect context.
-DISTRESS_CONTEXT_WORDS = {'לא', 'אין', 'בלי', 'קשה', 'איני', 'בלתי', 'נורא', 'סיוט', 'רע', 'אפס'}
+# I added 'Koach' (Strength) and 'Nimas' (Fed up) to catch "No strength" phrases.
+DISTRESS_CONTEXT_WORDS = {'לא', 'אין', 'בלי', 'קשה', 'איני', 'בלתי', 'נורא', 'סיוט', 'רע', 'אפס', 'כוח', 'נמאס'}
 
 def _normalize_token(tok: str) -> str:
     """
@@ -104,7 +107,8 @@ def _normalize_token(tok: str) -> str:
         "מפחד", "מפחדת",
         "לבד",
         "לישון", "שינה", "ישן", "נרדם", # Protected for Insomnia detection
-        "להתאבד", "התאבדות", "אתאבד" # Critical for safety override
+        "להתאבד", "התאבדות", "אתאבד", # Critical for safety override
+        "לחיות", "חיים" # Added to prevent stripping 'L' from Lichyot
     }
 
     if tok in PROTECTED_WORDS:
@@ -349,88 +353,99 @@ class HebrewWMDSignal(DistressSignal):
                                 return True
                     return False
 
-                # --- 1. OVERRIDE: INSOMNIA LOGIC ---
-                # I perform this check *before* standard classification.
-                sleep_roots = {'לישון', 'ישן', 'שינה', 'נרדם'}
-                is_distressed_sleep = _check_negation_window(sleep_roots)
+                # --- 1. OVERRIDE: SELF HARM / LIFE NEGATION ---
+                # Check for "Not wanting to live" or "No strength to live"
+                # I added 'Lichyot' (to live) to protected words so this check works.
+                life_roots = {'לחיות', 'חיים'}
+                is_negated_life = _check_negation_window(life_roots)
 
-                # HYBRID LOGIC:
-                # If we detect Insomnia context, we make sure it's reflected.
-                if is_distressed_sleep:
-                    # Check if the vector model already found a DIFFERENT Distress topic (e.g. Rumination)
-                    is_vector_distress = best_topic not in neutral_ids and best_topic != "insomnia"
+                # Check for explicit keywords (Suicide, Death)
+                has_selfharm_keyword = any(t in SELF_HARM_ANCHORS for t in norm_tokens)
 
-                    if is_vector_distress:
-                        # Case: Complex Distress (e.g. "Rumination" + "Insomnia")
-                        # Keep the vector topic (Rumination) to show depth, but INJECT Insomnia into matches.
-                        base_score = max(float(1.0 - dist), 0.85) # Ensure high score
-                        matched_token = next((t for t in norm_tokens if t in sleep_roots), "שינה")
-                        # Prepend Insomnia match so it shows as a chip
-                        pairs.insert(0, {"token": matched_token, "matched_to": "נדודי שינה", "topic": "insomnia", "cost": 0.0})
-                        matched = pairs
-                        method = "hybrid_distress"
-                    else:
-                        # Case: Pure Insomnia or vector was Neutral
-                        best_topic = "insomnia"
-                        base_score = 0.85
-                        method = "explicit_symptom"
-                        if not matched:
-                            matched = [{"token": "שינה", "topic": "insomnia", "cost": 0.1}]
+                if has_selfharm_keyword or is_negated_life:
+                    # FORCE CRITICAL ALERT
+                    best_topic = "self_harm_ideas"
+                    base_score = 0.95
+                    method = "critical_override"
 
-                # --- 2. LOGIC: HANDLE FALSE POSITIVES & FLIPS ---
-                # Only proceed if we haven't already decided via Override
-                elif best_topic == "insomnia":
-                    # If Insomnia won the vectors but failed the window check -> Force Neutral.
-                    best_topic = "daily_routine"
-                    base_score = 0.0
-                    method = "neutral_forced_sleep"
-                    matched = []
+                    # Ensure the trigger word is visible in the result
+                    trigger_word = next((t for t in norm_tokens if t in life_roots or t in SELF_HARM_ANCHORS), "סכנה")
+                    # Clear matches and put the critical one first
+                    matched = [{"token": trigger_word, "matched_to": "סכנת חיים", "topic": "self_harm_ideas", "cost": 0.0}]
 
-                elif best_topic == "positive_mood":
-                    # Check for "Positive Flip" (Good + Negation = Bad)
-                    positive_roots = {'טוב', 'שמח', 'כיף', 'נהנה', 'רגוע', 'מעולה', 'סבבה', 'אחלה'}
-                    is_negated_positive = _check_negation_window(positive_roots)
+                # --- 2. OVERRIDE: INSOMNIA LOGIC ---
+                # I perform this check *before* standard classification logic if it's not self-harm.
+                elif best_topic != "self_harm_ideas":
+                    sleep_roots = {'לישון', 'ישן', 'שינה', 'נרדם'}
+                    is_distressed_sleep = _check_negation_window(sleep_roots)
 
-                    if is_negated_positive:
-                        best_topic = "sadness"
+                    # HYBRID LOGIC:
+                    # If we detect Insomnia context, we make sure it's reflected.
+                    if is_distressed_sleep:
+                        # Check if the vector model already found a DIFFERENT Distress topic (e.g. Rumination)
+                        is_vector_distress = best_topic not in neutral_ids and best_topic != "insomnia"
+
+                        if is_vector_distress:
+                            # Case: Complex Distress (e.g. "Rumination" + "Insomnia")
+                            # Keep the vector topic (Rumination) to show depth, but INJECT Insomnia into matches.
+                            base_score = max(float(1.0 - dist), 0.85) # Ensure high score
+                            matched_token = next((t for t in norm_tokens if t in sleep_roots), "שינה")
+                            # Prepend Insomnia match so it shows as a chip
+                            pairs.insert(0, {"token": matched_token, "matched_to": "נדודי שינה", "topic": "insomnia", "cost": 0.0})
+                            matched = pairs
+                            method = "hybrid_distress"
+                        else:
+                            # Case: Pure Insomnia or vector was Neutral
+                            best_topic = "insomnia"
+                            base_score = 0.85
+                            method = "explicit_symptom"
+                            if not matched:
+                                matched = [{"token": "שינה", "topic": "insomnia", "cost": 0.1}]
+
+                    # --- 3. LOGIC: HANDLE FALSE POSITIVES & FLIPS ---
+                    # Only proceed if we haven't already decided via Override
+                    elif best_topic == "insomnia":
+                        # If Insomnia won the vectors but failed the window check -> Force Neutral.
+                        best_topic = "daily_routine"
+                        base_score = 0.0
+                        method = "neutral_forced_sleep"
+                        matched = []
+
+                    elif best_topic == "positive_mood":
+                        # Check for "Positive Flip" (Good + Negation = Bad)
+                        positive_roots = {'טוב', 'שמח', 'כיף', 'נהנה', 'רגוע', 'מעולה', 'סבבה', 'אחלה'}
+                        is_negated_positive = _check_negation_window(positive_roots)
+
+                        if is_negated_positive:
+                            best_topic = "sadness"
+                            sim = max(0.0, 1.0 - dist)
+                            base_score = float(sim)
+                            method = "negated_positive_flip"
+
+                    # --- 4. FINAL NEUTRAL FILTER ---
+                    # If we are in standard WMD mode and still pointing to neutral -> Clear score.
+                    if best_topic in neutral_ids and method == "relaxed_wmd":
+                        base_score = 0.0
+                        method = "neutral_match"
+                        matched = []
+                    elif method == "relaxed_wmd":
+                        # Standard vector scoring calculation
                         sim = max(0.0, 1.0 - dist)
                         base_score = float(sim)
-                        method = "negated_positive_flip"
+                        matched = pairs
+                        # Negation penalty for standard cases (unless we flipped or overrode)
+                        if has_neg and base_score > 0.2:
+                            base_score *= 0.5
 
-                # --- 3. FINAL NEUTRAL FILTER ---
-                # If we are in standard WMD mode and still pointing to neutral -> Clear score.
-                if best_topic in neutral_ids and method == "relaxed_wmd":
-                    base_score = 0.0
-                    method = "neutral_match"
-                    matched = []
-                elif method == "relaxed_wmd":
-                    # Standard vector scoring calculation
-                    sim = max(0.0, 1.0 - dist)
-                    base_score = float(sim)
-                    matched = pairs
-                    # Negation penalty for standard cases (unless we flipped or overrode)
-                    if has_neg and base_score > 0.2:
-                        base_score *= 0.5
+            # Critical Alert Flag (used by Analysis Engine)
+            critical_alert = (best_topic == "self_harm_ideas")
 
-            # --- Safety Mechanism: Critical Override ---
-            # If I detect a specific self-harm anchor (like 'suicide'), I immediately force the score to High.
-            # We explicitly prefer a false positive here to ensure no critical signal is missed.
-            has_selfharm_anchor = any(t in SELF_HARM_ANCHORS for t in norm_tokens)
-            if has_selfharm_anchor:
-                base_score = max(base_score, 0.95)
-                anchor = next((t for t in norm_tokens if t in SELF_HARM_ANCHORS), "התאבדות")
-                # Add the critical match to the visualization data
-                matched.insert(0, {"token": anchor, "topic": "self_harm_ideas", "cost": 0.0})
-
-            # Intensity Adjustment (Whisper/Shout multipliers)
             intensity = (seg.get("intensity") or "normal").lower()
             multiplier = INTENSITY_TO_MULTIPLIER.get(intensity, 1.0)
             intensity_he = {"whisper": "לחישה", "normal": "דיבור רגיל", "shout": "צעקה"}.get(intensity, "רגיל")
 
             weighted_score = min(base_score * multiplier, 1.0)
             snippet = seg_text if len(seg_text) <= 40 else (seg_text[:40] + "…")
-
-            critical_alert = has_selfharm_anchor
 
             segment_scores.append({
                 "index": idx,
@@ -506,40 +521,59 @@ class HebrewWMDSignal(DistressSignal):
         topic_scores.sort(key=lambda x: x[1])
         best_topic_id, best_dist = topic_scores[0]
 
-        # Generate pair data for frontend visualization
-        pairs = []
-        winner_vecs = np.array(topic_docs[best_topic_id])
-        wnorms = np.linalg.norm(winner_vecs, axis=1, keepdims=True)
-        winner_vecs = winner_vecs / wnorms
+        # --- MULTI-TOPIC VISUALIZATION UPDATE ---
+        # Identify top topics to visualize (Winner + potential Runner-up)
+        final_pairs = []
 
-        winner_words = []
+        # We always check the winner
+        topics_to_check = [best_topic_id]
+
+        # Check runner-up if it exists and is a "Good Match" (e.g. dist < 0.65)
+        # This ensures that "Insomnia" is detected even if "Rumination" wins by a small margin.
+        if len(topic_scores) > 1:
+            runner_up_id, runner_up_dist = topic_scores[1]
+            if runner_up_dist < 0.65:
+                topics_to_check.append(runner_up_id)
+
+        # Build pairs for all selected topics
         all_topics = CLINICAL_TOPICS + NEUTRAL_TOPICS
-        topic_def = next((t for t in all_topics if t["id"] == best_topic_id), None)
-        if topic_def:
-            for item in topic_def.get("words", []):
-                for tok in self._tokenize(str(item)):
-                    tok = _normalize_token(tok)
-                    if tok not in HE_STOPWORDS:
-                        try:
-                            _ = self._model[tok]
-                            winner_words.append(tok)
-                        except: pass
 
-        for i, sv in enumerate(student_vecs):
-            sims = np.dot(winner_vecs, sv)
-            best_idx = np.argmax(sims)
-            matched_word = winner_words[best_idx] if best_idx < len(winner_words) else "?"
-            cost = 1.0 - sims[best_idx]
+        for t_id in topics_to_check:
+            # Reconstruct vector cloud for this topic (inefficient but safe for prototype)
+            target_vecs = np.array(topic_docs[t_id])
+            target_norms = np.linalg.norm(target_vecs, axis=1, keepdims=True)
+            target_vecs = target_vecs / target_norms
 
-            if cost < 0.6:
-                pairs.append({
-                    "token": student_words[i],
-                    "matched_to": matched_word,
-                    "topic": best_topic_id,
-                    "cost": round(float(cost), 3)
-                })
+            # Reconstruct word list for visualization
+            target_words = []
+            topic_def = next((t for t in all_topics if t["id"] == t_id), None)
+            if topic_def:
+                for item in topic_def.get("words", []):
+                    for tok in self._tokenize(str(item)):
+                        tok = _normalize_token(tok)
+                        if tok not in HE_STOPWORDS:
+                            try:
+                                _ = self._model[tok]
+                                target_words.append(tok)
+                            except: pass
 
-        return float(best_dist), best_topic_id, pairs
+            # Match student words to this topic
+            for i, sv in enumerate(student_vecs):
+                sims = np.dot(target_vecs, sv)
+                best_idx = np.argmax(sims)
+                cost = 1.0 - sims[best_idx]
+
+                # If match is decent, add it
+                if cost < 0.6:
+                    matched_word = target_words[best_idx] if best_idx < len(target_words) else "?"
+                    final_pairs.append({
+                        "token": student_words[i],
+                        "matched_to": matched_word,
+                        "topic": t_id,
+                        "cost": round(float(cost), 3)
+                    })
+
+        return float(best_dist), best_topic_id, final_pairs
 
     def _build_topic_documents(self) -> Dict[str, List[np.ndarray]]:
         """
