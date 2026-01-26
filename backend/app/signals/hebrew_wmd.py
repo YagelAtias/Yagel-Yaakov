@@ -13,6 +13,10 @@ INTENSITY_TO_MULTIPLIER = {
     "shout": 1.4,
 }
 
+# Minimum cosine similarity for a token→topic to be considered a valid match
+# Raised to avoid false positives on neutral academic text
+SIM_MIN = 0.50
+
 # Small Hebrew stopword list (good enough for the demo)
 HE_STOPWORDS = {
     "של", "על", "אל", "אם", "עם", "אך", "גם", "לא", "אין", "כן",
@@ -27,7 +31,11 @@ CLINICAL_TOPICS: List[Dict] = [
     {"id": "withdrawal", "weight": 0.6, "words": ["נסוג", "סגור", "סגורה", "מתרחק", "מתרחקת", "לבד", "לא רוצה לראות אף אחד", "התבודדות", "מנותק", "מנותקת"]},
     {"id": "guilt", "weight": 0.6, "words": ["אשם", "אשמה", "טעות שלי", "אשמתי", "בגללי", "יכולתי למנוע", "חרטה", "מכה על חטא"]},
     {"id": "fatigue", "weight": 0.5, "words": ["עייפות", "אין כוח", "מותש", "מותשת", "גמור", "גמורה", "שחוק", "שחוקה", "אין אנרגיה", "כבד לי"]},
-    {"id": "self_harm_ideas", "weight": 0.95, "words": ["מוות", "לא לחיות", "להיעלם", "רוצה לגמור עם זה", "די", "סוף", "לחדול", "קץ"]},
+    {"id": "self_harm_ideas", "weight": 0.95, "words": [
+        "מוות", "למות", "לא לחיות", "להיעלם", "קץ",
+        "להתאבד", "התאבדות", "אתאבד", "להרוג את עצמי",
+        "רוצה לגמור עם זה", "לחדול"
+    ]},
     {"id": "anxiety_agitation", "weight": 0.7, "words": ["חרדה", "לחץ", "חוסר מנוחה", "דפיקות לב", "מחנק", "משתגע", "משתגעת", "מתוח", "מתוחה", "קצר בנשימה"]},
     {"id": "insomnia", "weight": 0.6, "words": ["נדודי שינה", "לא ישן", "לא ישנה", "לא הצלחתי לישון", "הפוך", "הפוכה", "ער כל הלילה", "מסתכל על התקרה"]},
 ]
@@ -48,9 +56,43 @@ TOPIC_LABELS: Dict[str, str] = {
 # Topic-specific helpers
 # Anchors help nudge clear sleep complaints toward insomnia (and away from self-harm)
 INSOMNIA_ANCHORS = {"לישון", "שינה", "ישנתי", "נדודי", "לילה"}
-SELF_HARM_ANCHORS = {"מוות", "להיעלם", "קץ", "לחיות"}
+SELF_HARM_ANCHORS = {"מוות", "למות", "להיעלם", "קץ", "להתאבד", "התאבדות", "אתאבד", "להרוג", "להרוג את עצמי", "לא לחיות"}
 # Generic tokens to ignore when building the self-harm centroid (too broad on their own)
 SELF_HARM_IGNORE = {"די", "סוף"}
+ANXIETY_ANCHORS = {"חרדה", "לחץ", "לחוצה", "לחוץ", "בלחץ", "מתוח"}
+HOPELESSNESS_ANCHORS = {"ייאוש", "מיואש", "מיואשת", "אבוד", "אבודה"}
+RUMINATION_ANCHORS = {"שוב", "שוב ושוב", "חוזר", "חוזרת", "חוזרים", "לופ", "טוחן", "טוחנת"}
+GUILT_ANCHORS = {"אשמה", "אשם", "אשמתי"}
+
+# Words we want to ignore completely for matching (neutral school/scheduling terms)
+NEUTRAL_IGNORE = {
+    "מבחן", "בחינה", "בגרות",
+    "ספריה", "ספרייה",
+    "ללמוד", "לימוד", "לומד", "לומדת",
+    "מחר", "היום", "מחרתיים",
+    "יש",
+    "אלך", "אילך", "אעלה", "אבוא"
+}
+
+def _normalize_token(tok: str) -> str:
+    """Light Hebrew normalization: strip common one-letter prefixes and normalize forms.
+    This is intentionally simple for the prototype.
+    """
+    if not tok:
+        return tok
+    # Strip common prefixes (single letters)
+    # e.g., 'בלחץ' -> 'לחץ', 'והרגשתי' -> 'הרגשתי'
+    if len(tok) > 1 and tok[0] in {"ב", "כ", "ל", "ה", "ו", "מ", "ש"}:
+        tok = tok[1:]
+    # Common end forms to base forms (very light touch)
+    repl = {
+        "ישנה": "שינה",
+        "ישנתי": "ישנתי",
+        "לחוצה": "לחוץ",
+        "מיואשת": "מיואש",
+    }
+    tok = repl.get(tok, tok)
+    return tok
 
 
 class HebrewWMDSignal(DistressSignal):
@@ -246,52 +288,26 @@ class HebrewWMDSignal(DistressSignal):
         if segments:
             return self._analyze_segments(segments)
 
+        # Text-only path: analyse as a single segment with intensity derived from decibels
         text = data.get("text", "")
         decibels = data.get("avg_decibels", 0.0)
 
-        # 1. Fallback Logic: If no model, use basic keyword matching
-        if not self._model:
-            return self._keyword_fallback(text, decibels)
-
-        # 2. Geometric Semantic Calculation
-        student_vec = self.get_sentence_vector(text)
-        # Create a 'Master Distress Vector' by averaging lexicon keywords
-        clinical_vec = self.get_sentence_vector(" ".join(CLINICAL_WEIGHTS.keys()))
-
-        # 3. Cosine Similarity (The 'Distance' between student and distress)
-        # Calculate the dot product divided by the product of the magnitudes
-        norm_product = np.linalg.norm(student_vec) * np.linalg.norm(clinical_vec)
-
-        if norm_product == 0:
-            base_score = 0.0
-        else:
-            similarity = np.dot(student_vec, clinical_vec) / norm_product
-            base_score = float(np.nan_to_num(similarity))
-
-        # 4. Apply Acoustic multipliers
-        multiplier = 1.0
-        intensity_label = "Normal"
-
+        # Map decibels to an intensity label (whisper/normal/shout)
         if decibels > 75:
-            multiplier = 1.4
-            intensity_label = "Shouting"
-        elif 0 < decibels < 40:
-            multiplier = 1.2
-            intensity_label = "Whispering"
+            intensity = "shout"
+        elif 0 < float(decibels) < 40:
+            intensity = "whisper"
+        else:
+            intensity = "normal"
 
-        final_score = round(min(base_score * multiplier, 1.0), 2)
+        pseudo_segments = [{"text": text, "intensity": intensity}]
 
-        return {
-            "score": final_score,
-            "metadata": {
-                "algorithm": "semantic_vector_similarity",
-                "intensity_zone": intensity_label,
-                "is_vector_based": True,
-                "base_score": round(base_score, 2),
-                "model_loaded": bool(self._model is not None),
-                "model_path": HebrewWMDSignal._model_path
-            }
-        }
+        # If no model, delegate to keyword fallback (segment-aware)
+        if not self._model:
+            return self._segments_keyword_fallback(pseudo_segments)
+
+        # Use the same segment-aware logic to keep behavior consistent
+        return self._analyze_segments(pseudo_segments)
 
     # Segment based custom topics scoring (clinical WMD idea)
 
@@ -321,6 +337,10 @@ class HebrewWMDSignal(DistressSignal):
             has_neg = any(t in {"לא", "אין", "בלי"} for t in tokens_raw)
             # Keep non-stopword tokens; we will skip tokens without vectors later
             tokens = [t for t in tokens_raw if t not in HE_STOPWORDS]
+            # Normalized tokens (for anchors & matching robustness)
+            norm_tokens = [_normalize_token(t) for t in tokens]
+            # Remove neutral/school words after normalization
+            norm_tokens = [t for t in norm_tokens if t not in NEUTRAL_IGNORE]
             seg_len = max(1, len(seg_text))
 
             if not tokens:
@@ -331,17 +351,56 @@ class HebrewWMDSignal(DistressSignal):
                 matched = []
             else:
                 # Match sentence words to topics and compute an average distance
-                base_distance, matched = self._greedy_assignment_distance(tokens, topic_centroids, has_neg)
+                base_distance, matched = self._greedy_assignment_distance(norm_tokens, topic_centroids, has_neg)
                 # Turn distance into a score from 0 to 1
                 base_score = 1.0 / (1.0 + base_distance)
                 method = "cad_greedy"
 
+            # Neutral dampening: if no distress anchors and match is weak, cap score
+            has_any_anchor = (
+                any(t in INSOMNIA_ANCHORS for t in norm_tokens) or
+                any(t in SELF_HARM_ANCHORS for t in norm_tokens) or
+                any(t in ANXIETY_ANCHORS for t in norm_tokens) or
+                any(t in HOPELESSNESS_ANCHORS for t in norm_tokens)
+            )
+            # If explicit self-harm language is present, ensure a very high score
+            has_selfharm_anchor = any(t in SELF_HARM_ANCHORS for t in norm_tokens)
+            if has_selfharm_anchor:
+                base_score = max(base_score, 0.95)
+            if not has_any_anchor:
+                # If weak match and no anchors, cap aggressively
+                if base_distance > 0.55:
+                    base_score = min(base_score, 0.2)
+                # If almost no tokens matched, push even lower
+                matched_cnt = len(matched)
+                total_cnt = max(1, len(norm_tokens))
+                matched_ratio = matched_cnt / total_cnt
+                if matched_cnt <= 1 or matched_ratio < 0.3:
+                    base_score = min(base_score, 0.15)
+                # If segment is neutral and weak, clear topic matches to avoid misleading labels
+                if base_score <= 0.2:
+                    matched = []
+                    method = "neutral"
+
             intensity = (seg.get("intensity") or "normal").lower()
             multiplier = INTENSITY_TO_MULTIPLIER.get(intensity, 1.0)
-            intensity_he = {"whisper": "לחישה", "normal": "רגיל", "shout": "צעקה"}.get(intensity, "רגיל")
+            intensity_he = {"whisper": "לחישה", "normal": "דיבור רגיל", "shout": "צעקה"}.get(intensity, "רגיל")
             weighted_score = min(base_score * multiplier, 1.0)
             # Short snippet for UI (first 40 chars)
             snippet = seg_text if len(seg_text) <= 40 else (seg_text[:40] + "…")
+
+            # Critical alert: force visible self-harm label at top of matches if anchor found
+            critical_alert = False
+            if has_selfharm_anchor:
+                critical_alert = True
+                # Prefer showing the first anchor token that appeared
+                anchor_tok = next((t for t in norm_tokens if t in SELF_HARM_ANCHORS), "התאבדות")
+                # Ensure self_harm_ideas appears first in matched list
+                forced = {"token": anchor_tok, "topic": "self_harm_ideas", "cost": 0.0}
+                # Remove any existing self_harm_ideas entries to avoid duplicates
+                others = [m for m in matched if (m.get("topic") or m.get("concept_id")) != "self_harm_ideas"]
+                # Put self-harm first, but keep other topics so additional distress is visible
+                matched = [forced] + others
 
             segment_scores.append({
                 "index": idx,
@@ -353,7 +412,8 @@ class HebrewWMDSignal(DistressSignal):
                 "weighted": round(weighted_score, 3),
                 "method": method,
                 "matched": matched[:5],  # cap for brevity
-                "snippet": snippet
+                "snippet": snippet,
+                "critical_alert": critical_alert
             })
 
             total_len += seg_len
@@ -361,6 +421,9 @@ class HebrewWMDSignal(DistressSignal):
 
         overall = round(weighted_sum / max(1, total_len), 2)
 
+        # Bubble up a global critical alert if any segment has it
+        has_critical = any(s.get("critical_alert") for s in segment_scores)
+        critical_count = sum(1 for s in segment_scores if s.get("critical_alert"))
         return {
             "score": overall,
             "metadata": {
@@ -370,7 +433,9 @@ class HebrewWMDSignal(DistressSignal):
                 "topic_weights": {t["id"]: float(t.get("weight", 0.5)) for t in CLINICAL_TOPICS},
                 "topic_labels": TOPIC_LABELS,
                 "model_loaded": bool(self._model is not None),
-                "model_path": HebrewWMDSignal._model_path
+                "model_path": HebrewWMDSignal._model_path,
+                "has_critical_alert": has_critical,
+                "critical_segments_count": critical_count
             }
         }
 
@@ -451,6 +516,10 @@ class HebrewWMDSignal(DistressSignal):
             for item in raw_items:
                 # Reuse our tokenizer to strip punctuation and split Hebrew phrases safely
                 for tok in self._tokenize(str(item)):
+                    tok = _normalize_token(tok)
+                    # Skip generic stopwords inside topic centroids to reduce noise (e.g., 'לא')
+                    if tok in HE_STOPWORDS:
+                        continue
                     # Filter overly-generic tokens from self-harm centroid
                     if topic.get("id") == "self_harm_ideas" and tok in SELF_HARM_IGNORE:
                         continue
@@ -500,12 +569,20 @@ class HebrewWMDSignal(DistressSignal):
         # nudge costs to favor insomnia a bit and penalize self-harm slightly.
         has_insomnia_anchor = any(t in INSOMNIA_ANCHORS for t in tokens)
         has_selfharm_anchor = any(t in SELF_HARM_ANCHORS for t in tokens)
+        has_anxiety_anchor = any(t in ANXIETY_ANCHORS for t in tokens)
+        has_hopeless_anchor = any(t in HOPELESSNESS_ANCHORS for t in tokens)
+        has_guilt_anchor = any(t in GUILT_ANCHORS for t in tokens)
+        has_rumination_anchor = any(t in RUMINATION_ANCHORS for t in tokens)
+        has_any_distress_anchor = (
+            has_insomnia_anchor or has_selfharm_anchor or has_anxiety_anchor or has_hopeless_anchor or has_rumination_anchor
+        )
 
         # For each token pick the closest topic, then match best pairs first
         candidates = []
         for t in token_vecs.keys():
             best_topic = None
             best_cost = 1.0
+            best_sim = -1.0
             for tid, (_, cvec, sev) in centroids.items():
                 sim = self._cosine(token_vecs[t], cvec)
                 # Base distance
@@ -521,10 +598,30 @@ class HebrewWMDSignal(DistressSignal):
                         cost += 0.20
                     elif tid == "insomnia":
                         cost -= 0.10
+                # Avoid accidental rumination when there are no rumination anchors
+                if not has_rumination_anchor and tid == "rumination":
+                    cost += 0.15
+                # Extra safety: avoid accidental insomnia tagging when there are no insomnia anchors
+                if not has_insomnia_anchor and tid == "insomnia":
+                    cost += 0.15
+                # Extra safety: when self-harm anchors exist but no guilt anchors, avoid guilt matches
+                if has_selfharm_anchor and not has_guilt_anchor and tid == "guilt":
+                    cost += 0.25
+                # Strongly prefer self-harm topic when encountering self-harm anchors
+                if t in SELF_HARM_ANCHORS and tid == "self_harm_ideas":
+                    cost -= 0.20
                 if cost < best_cost:
                     best_cost = cost
                     best_topic = tid
-            candidates.append((t, best_topic, best_cost))
+                if sim > best_sim:
+                    best_sim = sim
+            # Only accept a match if similarity clears the minimum threshold
+            if best_topic is not None and best_sim >= SIM_MIN:
+                # Topic-specific stricter threshold for rumination to reduce false positives
+                if best_topic == "rumination" and best_sim < 0.60:
+                    pass  # skip weak rumination matches
+                else:
+                    candidates.append((t, best_topic, best_cost))
 
         # Sort by lowest cost first
         candidates.sort(key=lambda x: x[2])
