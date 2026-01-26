@@ -1,4 +1,5 @@
 import os
+import re
 import numpy as np
 from pathlib import Path
 from gensim.models import KeyedVectors
@@ -6,24 +7,27 @@ from .clinical_lexicon import CLINICAL_WEIGHTS
 from .signal_base import DistressSignal
 from typing import List, Dict, Tuple
 
-# How we map the voice label to a numeric multiplier
+# Mapping voice labels to numeric multipliers.
+# I use this to amplify the distress score if the student is shouting or whispering.
 INTENSITY_TO_MULTIPLIER = {
     "whisper": 1.2,
     "normal": 1.0,
     "shout": 1.4,
 }
 
-# Minimum cosine similarity for a token→topic to be considered a valid match
-# Raised to avoid false positives on neutral academic text
-SIM_MIN = 0.50
+# Minimum cosine similarity threshold.
+# I lowered this slightly to 0.40 because we now have neutral topics to filter out noise.
+SIM_MIN = 0.40
 
-# Small Hebrew stopword list (good enough for the demo)
+# Standard Hebrew stopwords list
 HE_STOPWORDS = {
     "של", "על", "אל", "אם", "עם", "אך", "גם", "לא", "אין", "כן",
-    "אני", "אתה", "את", "הוא", "היא", "הם", "הן", "זה", "זו", "מה", "מי", "כמו", "מאוד"
+    "אני", "אתה", "את", "הוא", "היא", "הם", "הן", "זה", "זו", "מה", "מי", "כמו", "מאוד",
+    "היה", "היתה", "היו", "יהיה"
 }
 
-# Clinical topics we look for (prototype list)
+# --- 1. Clinical (Distress) Topics ---
+# These are the target clusters we want to detect.
 CLINICAL_TOPICS: List[Dict] = [
     {"id": "sadness", "weight": 0.6, "words": ["עצוב", "עצובה", "דכדוך", "עצבות", "בוכה", "לב שבור", "כואב לי", "מדוכא", "מדוכאת"]},
     {"id": "hopelessness", "weight": 0.9, "words": ["ייאוש", "אין תקווה", "חסר סיכוי", "חסרת סיכוי", "למה לנסות", "אבוד", "אבודה", "חסר תוחלת", "נגמר לי"]},
@@ -40,7 +44,17 @@ CLINICAL_TOPICS: List[Dict] = [
     {"id": "insomnia", "weight": 0.6, "words": ["נדודי שינה", "לא ישן", "לא ישנה", "לא הצלחתי לישון", "הפוך", "הפוכה", "ער כל הלילה", "מסתכל על התקרה"]},
 ]
 
-# Human-friendly Hebrew labels for topic ids (for UI display)
+# --- 2. Neutral (Control) Topics ---
+# I added these to solve the "False Positive" issue.
+# If a student talks about "tests" or "sleeping" in a normal context, the model should match these topics
+# instead of defaulting to "Anxiety" or "Insomnia".
+NEUTRAL_TOPICS: List[Dict] = [
+    {"id": "school_academic", "weight": 0.0, "words": ["מבחן", "שיעורי בית", "ללמוד", "כיתה", "מורה", "ציון", "מתמטיקה", "היסטוריה", "ספרות", "ביולוגיה", "מחברת", "ספר", "שאלה", "תשובה"]},
+    {"id": "daily_routine", "weight": 0.0, "words": ["אוכל", "לישון", "חברים", "משחק", "הפסקה", "בוקר", "ערב", "טלפון", "מקלחת", "בגד", "אוטובוס", "הולך", "חוזר"]},
+    {"id": "positive_mood", "weight": 0.0, "words": ["שמח", "כיף", "מצחיק", "נהנה", "טוב", "סבבה", "אחלה", "רגוע", "אוהב", "מעולה", "מצויין"]}
+]
+
+# Human-friendly Hebrew labels for UI display
 TOPIC_LABELS: Dict[str, str] = {
     "sadness": "עצבות",
     "hopelessness": "ייאוש",
@@ -51,67 +65,82 @@ TOPIC_LABELS: Dict[str, str] = {
     "self_harm_ideas": "מחשבות על פגיעה עצמית",
     "anxiety_agitation": "חרדה/אי שקט",
     "insomnia": "קשיי שינה",
+    "school_academic": "לימודים",
+    "daily_routine": "שגרה",
+    "positive_mood": "חיובי"
 }
 
-# Topic-specific helpers
-# Anchors help nudge clear sleep complaints toward insomnia (and away from self-harm)
+# --- Anchors for Hard-Coding Critical Matches ---
 INSOMNIA_ANCHORS = {"לישון", "שינה", "ישנתי", "נדודי", "לילה"}
-SELF_HARM_ANCHORS = {"מוות", "למות", "להיעלם", "קץ", "להתאבד", "התאבדות", "אתאבד", "להרוג", "להרוג את עצמי", "לא לחיות"}
-# Generic tokens to ignore when building the self-harm centroid (too broad on their own)
-SELF_HARM_IGNORE = {"די", "סוף"}
+# I included base forms here to ensure we catch self-harm even if normalization fails
+SELF_HARM_ANCHORS = {"מוות", "למות", "להיעלם", "קץ", "להתאבד", "התאבדות", "אתאבד", "להרוג", "להרוג את עצמי", "לא לחיות", "התאבד"}
+SELF_HARM_IGNORE = {"די", "סוף"} # Context dependent ignore list
 ANXIETY_ANCHORS = {"חרדה", "לחץ", "לחוצה", "לחוץ", "בלחץ", "מתוח"}
 HOPELESSNESS_ANCHORS = {"ייאוש", "מיואש", "מיואשת", "אבוד", "אבודה"}
-RUMINATION_ANCHORS = {"שוב", "שוב ושוב", "חוזר", "חוזרת", "חוזרים", "לופ", "טוחן", "טוחנת"}
-GUILT_ANCHORS = {"אשמה", "אשם", "אשמתי"}
 
-# Words we want to ignore completely for matching (neutral school/scheduling terms)
+# Words to ignore during the semantic match (too generic)
 NEUTRAL_IGNORE = {
-    "מבחן", "בחינה", "בגרות",
-    "ספריה", "ספרייה",
-    "ללמוד", "לימוד", "לומד", "לומדת",
-    "מחר", "היום", "מחרתיים",
-    "יש",
-    "אלך", "אילך", "אעלה", "אבוא"
+    "מחר", "היום", "מחרתיים", "יש", "אלך", "אילך", "אעלה", "אבוא"
 }
 
 def _normalize_token(tok: str) -> str:
-    """Light Hebrew normalization: strip common one-letter prefixes and normalize forms.
-    This is intentionally simple for the prototype.
+    """
+    Light Hebrew normalization logic.
+    I added a specific 'Protection' layer here because standard normalization was stripping
+    critical prefixes (like the 'M' in 'M-yoash'), causing missed detections.
     """
     if not tok:
         return tok
-    # Strip common prefixes (single letters)
-    # e.g., 'בלחץ' -> 'לחץ', 'והרגשתי' -> 'הרגשתי'
-    if len(tok) > 1 and tok[0] in {"ב", "כ", "ל", "ה", "ו", "מ", "ש"}:
+
+    # Protection List: These words must remain untouched.
+    PROTECTED_WORDS = {
+        "מיואש", "מיואשת",
+        "מדוכא", "מדוכאת",
+        "מתוח", "מתוחה",
+        "משוגע", "משוגעת",
+        "מוות", "מת", "מתה",
+        "מסכן", "מסכנה",
+        "מפחד", "מפחדת",
+        "לבד",
+        "להתאבד", "התאבדות", "אתאבד" # Critical: prevents stripping the 'L' or 'H'
+    }
+
+    if tok in PROTECTED_WORDS:
+        return tok
+
+    # Strip common prefixes (single letters) only if the word is long enough
+    if len(tok) > 3 and tok[0] in {"ב", "כ", "ל", "ה", "ו", "מ", "ש"}:
         tok = tok[1:]
-    # Common end forms to base forms (very light touch)
+
+    # Map common end forms to base forms for better vector matching
     repl = {
         "ישנה": "שינה",
         "ישנתי": "ישנתי",
         "לחוצה": "לחוץ",
         "מיואשת": "מיואש",
+        "מדוכאת": "מדוכא",
+        "בדידות": "לבד"
     }
     tok = repl.get(tok, tok)
     return tok
 
 
 class HebrewWMDSignal(DistressSignal):
-    _model = None  # Class level variable to store the model once
+    _model = None
     _model_path: str | None = None
 
     def __init__(self):
-        # Load the model once (first use)
+        # Load the Word2Vec model only once to save resources
         if HebrewWMDSignal._model is None:
             print("Loading Hebrew semantic model... please wait.")
-            # We look in a few simple places. HE_MODEL_PATH can be a folder or a file.
             env_path = os.environ.get("HE_MODEL_PATH")
             try:
                 project_root = Path(__file__).resolve().parents[3]
             except Exception:
                 project_root = Path.cwd()
 
-            model_folders = []  # folders that may contain words_list + words_vectors
-            model_files = []    # explicit Word2Vec text files (.txt)
+            model_folders = []
+            model_files = []
             if env_path:
                 p_env = Path(env_path)
                 p_env = p_env if p_env.is_absolute() else (project_root / p_env)
@@ -122,296 +151,222 @@ class HebrewWMDSignal(DistressSignal):
 
             models_dir = project_root / "models"
             model_folders.append(models_dir)
-
-            # Also look under backend/app/models for standard folders from the repo
             backend_models_dir = project_root / "backend" / "app" / "models"
             wiki_dir = backend_models_dir / "wiki-w2v"
             twitter_dir = backend_models_dir / "twitter-w2v"
-            # Prefer Wiki over Twitter; skip POS variant by default
-            if wiki_dir.exists():
-                model_folders.append(wiki_dir)
-            if twitter_dir.exists():
-                model_folders.append(twitter_dir)
-            # Common filenames inside models dir (Word2Vec text)
+            if wiki_dir.exists(): model_folders.append(wiki_dir)
+            if twitter_dir.exists(): model_folders.append(twitter_dir)
             model_files.append(models_dir / "he_model_small.txt")
 
             model_loaded = False
-            last_error = None
-            # Try a folder with words_list + words_vectors first
             for d in model_folders:
                 try:
                     model = self._try_load_from_np_txt(d)
-                    if model is None:
-                        continue
+                    if model is None: continue
                     HebrewWMDSignal._model = model
-                    try:
-                        HebrewWMDSignal._model.fill_norms(force=True)
-                    except Exception:
-                        pass
+                    try: HebrewWMDSignal._model.fill_norms(force=True)
+                    except: pass
                     print(f"Semantic model loaded from: {d}")
                     HebrewWMDSignal._model_path = str(d)
                     model_loaded = True
                     break
-                except Exception as e:
-                    last_error = e
-                    continue
-
-            # Then try explicit files (.txt)
-            for p in ([] if model_loaded else model_files):
-                try:
-                    if not p.exists():
-                        continue
-                    model = self._try_load_any(str(p))
-                    if model is None:
-                        continue
-                    HebrewWMDSignal._model = model
-                    try:
-                        HebrewWMDSignal._model.fill_norms(force=True)
-                    except Exception:
-                        pass
-                    print(f"Semantic model loaded from: {p}")
-                    HebrewWMDSignal._model_path = str(p)
-                    model_loaded = True
-                    break
-                except Exception as e:
-                    last_error = e
-                    continue
+                except Exception: continue
 
             if not model_loaded:
-                msg = "Model not loaded. Using keyword fallback."
-                if last_error:
-                    msg += f" Last error: {last_error}"
-                print(f"Warning: {msg}")
+                for p in model_files:
+                    try:
+                        if not p.exists(): continue
+                        model = self._try_load_any(str(p))
+                        if model is None: continue
+                        HebrewWMDSignal._model = model
+                        try: HebrewWMDSignal._model.fill_norms(force=True)
+                        except: pass
+                        print(f"Semantic model loaded from: {p}")
+                        HebrewWMDSignal._model_path = str(p)
+                        model_loaded = True
+                        break
+                    except Exception: continue
+
+            if not model_loaded:
+                print("Warning: Model not loaded. Using keyword fallback.")
                 HebrewWMDSignal._model_path = None
 
         self._model = HebrewWMDSignal._model
 
     def _try_load_any(self, path: str):
-        """Load vectors from a Word2Vec text file (.txt). Returns KeyedVectors or None."""
         p = Path(path)
-        if not p.exists():
-            return None
-        suf = p.suffix.lower()
-        if suf == ".txt":
+        if not p.exists(): return None
+        if p.suffix.lower() == ".txt":
             return KeyedVectors.load_word2vec_format(str(p), binary=False)
-        # Unknown extension
         return None
 
     def _try_load_from_np_txt(self, directory: Path):
-        """Build vectors from a folder that contains a words list and a vectors matrix.
-        Supports common names from the Bar‑Ilan repo:
-        - words list:  words_list.txt | words_list | words.txt | words_list.npy
-        - vectors:     words_vectors.npy | words_vectors | vectors.npy
-        Returns KeyedVectors or None.
-        """
-        # Resolve candidate files for words
         word_candidates = [
-            directory / "words_list.txt",
-            directory / "words_list",
-            directory / "words.txt",
-            directory / "words_list.npy",
-            directory / "words.npy",
+            directory / "words_list.txt", directory / "words_list",
+            directory / "words.txt", directory / "words_list.npy", directory / "words.npy"
         ]
         vec_candidates = [
-            directory / "words_vectors.npy",
-            directory / "words_vectors",
-            directory / "vectors.npy",
+            directory / "words_vectors.npy", directory / "words_vectors", directory / "vectors.npy"
         ]
-
-        words = None
-        vecs = None
-
-        # Find a words file we can read
+        words, vecs = None, None
         for wp in word_candidates:
-            if not wp.exists():
-                continue
-            if wp.suffix.lower() == ".npy" or wp.name.endswith("words_list"):  # allow npy or extensionless numpy
-                try:
+            if not wp.exists(): continue
+            try:
+                if wp.suffix == ".npy" or "npy" in wp.name:
                     arr = np.load(str(wp), allow_pickle=True)
-                    # Ensure python strings
                     words = [w if isinstance(w, str) else str(w) for w in arr.tolist()]
-                    break
-                except Exception:
-                    continue
-            else:
-                try:
+                else:
                     with open(wp, "r", encoding="utf-8") as f:
                         words = [line.strip() for line in f if line.strip()]
-                    break
-                except Exception:
-                    continue
-
-        # Find a vectors file we can read
+                break
+            except: continue
         for vp in vec_candidates:
-            if not vp.exists():
-                continue
+            if not vp.exists(): continue
             try:
                 vecs = np.load(str(vp))
                 break
-            except Exception:
-                continue
+            except: continue
 
-        if words is None or vecs is None:
-            return None
-        if len(words) != vecs.shape[0]:
-            raise ValueError(
-                f"words_list and words_vectors size mismatch: {len(words)} vs {vecs.shape[0]}"
-            )
-
+        if words is None or vecs is None: return None
+        if len(words) != vecs.shape[0]: return None
         kv = KeyedVectors(vector_size=vecs.shape[1])
         kv.add_vectors(words, vecs)
         return kv
 
     def get_sentence_vector(self, text):
-        """Turn a sentence into one average vector (ignores tokens we can't vectorize)."""
-        if not self._model:
-            return None
-
+        if not self._model: return None
         words = text.split()
-        # Extract vectors for tokens; for fastText, OOV tokens are supported via subword vectors
         vectors = []
         for w in words:
-            try:
-                vectors.append(self._model[w])
-            except Exception:
-                continue
-
-        if not vectors:
-            return np.zeros(self._model.vector_size)
-
-        # Mathematical mean of all word vectors in the sentence
+            try: vectors.append(self._model[w])
+            except: continue
+        if not vectors: return np.zeros(self._model.vector_size)
         return np.mean(vectors, axis=0)
 
     def analyze(self, data: dict) -> dict:
-        # If we get segments (preferred path)
+        # Check if the input is already segmented (from our Segmented UI)
         segments = data.get("segments")
         if segments:
             return self._analyze_segments(segments)
 
-        # Text-only path: analyse as a single segment with intensity derived from decibels
+        # --- Handling Raw Text Input ---
+        # If we receive a single block of text, I manually split it into sentences.
+        # This ensures we get granular, segment-level analysis even for raw paragraphs.
         text = data.get("text", "")
         decibels = data.get("avg_decibels", 0.0)
 
-        # Map decibels to an intensity label (whisper/normal/shout)
+        # Determine global intensity if not provided per segment
         if decibels > 75:
             intensity = "shout"
-        elif 0 < float(decibels) < 40:
+        elif 0 < decibels < 40:
             intensity = "whisper"
         else:
             intensity = "normal"
 
-        pseudo_segments = [{"text": text, "intensity": intensity}]
+        # Splitting logic: break on punctuation or newlines
+        raw_sentences = re.split(r'[.?!:\n]+', text)
 
-        # If no model, delegate to keyword fallback (segment-aware)
+        # Create "virtual" segments for the analyzer
+        generated_segments = [
+            {"text": s.strip(), "intensity": intensity}
+            for s in raw_sentences
+            if s.strip() # Filter out empty artifacts
+        ]
+
+        if not generated_segments:
+            generated_segments = [{"text": text, "intensity": intensity}]
+
+        # Pass to the main analysis logic
         if not self._model:
-            return self._segments_keyword_fallback(pseudo_segments)
+            return self._segments_keyword_fallback(generated_segments)
 
-        # Use the same segment-aware logic to keep behavior consistent
-        return self._analyze_segments(pseudo_segments)
-
-    # Segment based custom topics scoring (clinical WMD idea)
+        return self._analyze_segments(generated_segments)
 
     def _analyze_segments(self, segments: List[Dict]) -> Dict:
-        """Score each segment (text + intensity) and return overall meaning plus per‑segment details."""
-        # No model? Use keyword fallback per segment
+        """
+        Main Analysis Logic:
+        I run Relaxed WMD on each segment against both Clinical (Distress) and Neutral topics.
+        This allows us to contextually decide if a word is truly distress or just academic talk.
+        """
         if not self._model:
             return self._segments_keyword_fallback(segments)
 
-        # Build topic vectors (centroids) from words we can vectorize
-        topic_centroids = self._build_topic_centroids()
-        if not topic_centroids:
-            # If none could be built, fall back and explain
-            print("Warning: No topic centroids could be built from the model vocabulary. Falling back to keyword mode.")
-            return self._segments_keyword_fallback(segments)
+        topic_docs = self._build_topic_documents()
 
         segment_scores = []
         total_len = 0
         weighted_sum = 0.0
 
+        clinical_map = {t["id"]: t["weight"] for t in CLINICAL_TOPICS}
+        neutral_ids = {t["id"] for t in NEUTRAL_TOPICS}
+
         for idx, seg in enumerate(segments):
             seg_text = (seg.get("text") or "").strip()
-            if not seg_text:
-                continue
+            if not seg_text: continue
 
             tokens_raw = self._tokenize(seg_text)
             has_neg = any(t in {"לא", "אין", "בלי"} for t in tokens_raw)
-            # Keep non-stopword tokens; we will skip tokens without vectors later
             tokens = [t for t in tokens_raw if t not in HE_STOPWORDS]
-            # Normalized tokens (for anchors & matching robustness)
             norm_tokens = [_normalize_token(t) for t in tokens]
-            # Remove neutral/school words after normalization
             norm_tokens = [t for t in norm_tokens if t not in NEUTRAL_IGNORE]
             seg_len = max(1, len(seg_text))
 
-            if not tokens:
-                # No useful words found in the model
-                base_score = 0.0
-                method = "fallback_empty"
-                base_distance = 1.0
-                matched = []
-            else:
-                # Match sentence words to topics and compute an average distance
-                base_distance, matched = self._greedy_assignment_distance(norm_tokens, topic_centroids, has_neg)
-                # Turn distance into a score from 0 to 1
-                base_score = 1.0 / (1.0 + base_distance)
-                method = "cad_greedy"
+            method = "relaxed_wmd"
+            matched = []
+            base_score = 0.0
 
-            # Neutral dampening: if no distress anchors and match is weak, cap score
-            has_any_anchor = (
-                any(t in INSOMNIA_ANCHORS for t in norm_tokens) or
-                any(t in SELF_HARM_ANCHORS for t in norm_tokens) or
-                any(t in ANXIETY_ANCHORS for t in norm_tokens) or
-                any(t in HOPELESSNESS_ANCHORS for t in norm_tokens)
-            )
-            # If explicit self-harm language is present, ensure a very high score
+            if not tokens:
+                method = "empty"
+            else:
+                # Calculate semantic distance to topics
+                dist, best_topic, pairs = self._calculate_relaxed_wmd(norm_tokens, topic_docs, has_neg)
+
+                # Filter False Positives:
+                # If the text is closer to a Neutral topic (like 'School') than to Distress,
+                # I discard the distress score.
+                if best_topic in neutral_ids:
+                    base_score = 0.0
+                    method = "neutral_match"
+                    matched = []
+                else:
+                    # Convert distance to similarity score
+                    sim = max(0.0, 1.0 - dist)
+                    base_score = float(sim)
+                    matched = pairs
+
+                    # Apply penalty for negation (e.g., "I am not sad")
+                    if has_neg and base_score > 0.2:
+                        base_score *= 0.5
+
+            # --- Safety Mechanism: Critical Override ---
+            # If I detect a specific self-harm anchor (like 'suicide'), I immediately force the score to High.
+            # We explicitly prefer a false positive here to ensure no critical signal is missed.
             has_selfharm_anchor = any(t in SELF_HARM_ANCHORS for t in norm_tokens)
             if has_selfharm_anchor:
                 base_score = max(base_score, 0.95)
-            if not has_any_anchor:
-                # If weak match and no anchors, cap aggressively
-                if base_distance > 0.55:
-                    base_score = min(base_score, 0.2)
-                # If almost no tokens matched, push even lower
-                matched_cnt = len(matched)
-                total_cnt = max(1, len(norm_tokens))
-                matched_ratio = matched_cnt / total_cnt
-                if matched_cnt <= 1 or matched_ratio < 0.3:
-                    base_score = min(base_score, 0.15)
-                # If segment is neutral and weak, clear topic matches to avoid misleading labels
-                if base_score <= 0.2:
-                    matched = []
-                    method = "neutral"
+                anchor = next((t for t in norm_tokens if t in SELF_HARM_ANCHORS), "התאבדות")
+                # Add the critical match to the visualization data
+                matched.insert(0, {"token": anchor, "topic": "self_harm_ideas", "cost": 0.0})
 
+            # Intensity Adjustment (Whisper/Shout multipliers)
             intensity = (seg.get("intensity") or "normal").lower()
             multiplier = INTENSITY_TO_MULTIPLIER.get(intensity, 1.0)
             intensity_he = {"whisper": "לחישה", "normal": "דיבור רגיל", "shout": "צעקה"}.get(intensity, "רגיל")
+
             weighted_score = min(base_score * multiplier, 1.0)
-            # Short snippet for UI (first 40 chars)
             snippet = seg_text if len(seg_text) <= 40 else (seg_text[:40] + "…")
 
-            # Critical alert: force visible self-harm label at top of matches if anchor found
-            critical_alert = False
-            if has_selfharm_anchor:
-                critical_alert = True
-                # Prefer showing the first anchor token that appeared
-                anchor_tok = next((t for t in norm_tokens if t in SELF_HARM_ANCHORS), "התאבדות")
-                # Ensure self_harm_ideas appears first in matched list
-                forced = {"token": anchor_tok, "topic": "self_harm_ideas", "cost": 0.0}
-                # Remove any existing self_harm_ideas entries to avoid duplicates
-                others = [m for m in matched if (m.get("topic") or m.get("concept_id")) != "self_harm_ideas"]
-                # Put self-harm first, but keep other topics so additional distress is visible
-                matched = [forced] + others
+            critical_alert = has_selfharm_anchor
 
             segment_scores.append({
                 "index": idx,
                 "intensity": intensity,
                 "intensity_he": intensity_he,
                 "multiplier": multiplier,
-                "base_distance": round(base_distance, 3),
-                "base": round(base_score, 3),
-                "weighted": round(weighted_score, 3),
+                "base": round(float(base_score), 3),
+                "weighted": round(float(weighted_score), 3),
                 "method": method,
-                "matched": matched[:5],  # cap for brevity
+                "matched": matched[:5],
                 "snippet": snippet,
                 "critical_alert": critical_alert
             })
@@ -419,33 +374,140 @@ class HebrewWMDSignal(DistressSignal):
             total_len += seg_len
             weighted_sum += weighted_score * seg_len
 
-        overall = round(weighted_sum / max(1, total_len), 2)
-
-        # Bubble up a global critical alert if any segment has it
+        overall = round(float(weighted_sum / max(1, total_len)), 2)
         has_critical = any(s.get("critical_alert") for s in segment_scores)
         critical_count = sum(1 for s in segment_scores if s.get("critical_alert"))
+
         return {
             "score": overall,
             "metadata": {
-                "algorithm": "custom_wmd_cad",
-                "is_vector_based": True,
+                "algorithm": "relaxed_wmd_contrastive",
                 "segment_scores": segment_scores,
-                "topic_weights": {t["id"]: float(t.get("weight", 0.5)) for t in CLINICAL_TOPICS},
+                "topic_weights": clinical_map,
                 "topic_labels": TOPIC_LABELS,
-                "model_loaded": bool(self._model is not None),
-                "model_path": HebrewWMDSignal._model_path,
                 "has_critical_alert": has_critical,
                 "critical_segments_count": critical_count
             }
         }
 
+    def _calculate_relaxed_wmd(self, tokens: List[str], topic_docs: Dict[str, List[np.ndarray]], has_negation: bool):
+        """
+        Implementation of Relaxed Word Mover's Distance (RWMD).
+        I calculate the distance from each student token to the *closest* token in the topic cloud,
+        then average these distances to get a topic score.
+        """
+        student_vecs = []
+        student_words = []
+        for t in tokens:
+            try:
+                v = self._model[t]
+                v = v / np.linalg.norm(v)
+                student_vecs.append(v)
+                student_words.append(t)
+            except: continue
+
+        if not student_vecs:
+            return 1.0, None, []
+
+        topic_scores = []
+        for topic_id, topic_vectors in topic_docs.items():
+            if not topic_vectors: continue
+
+            topic_matrix = np.array(topic_vectors)
+            norms = np.linalg.norm(topic_matrix, axis=1, keepdims=True)
+            topic_matrix = topic_matrix / norms
+
+            total_dist = 0.0
+            for sv in student_vecs:
+                # Fast matrix dot product to find best matching word in topic
+                sims = np.dot(topic_matrix, sv)
+                best_sim = np.max(sims)
+                dist = 1.0 - best_sim
+                total_dist += dist
+
+            avg_wmd = total_dist / len(student_vecs)
+            topic_scores.append((topic_id, avg_wmd))
+
+        # Sort topics by distance (lowest distance = best match)
+        topic_scores.sort(key=lambda x: x[1])
+        best_topic_id, best_dist = topic_scores[0]
+
+        # Generate pair data for frontend visualization
+        pairs = []
+        winner_vecs = np.array(topic_docs[best_topic_id])
+        wnorms = np.linalg.norm(winner_vecs, axis=1, keepdims=True)
+        winner_vecs = winner_vecs / wnorms
+
+        winner_words = []
+        all_topics = CLINICAL_TOPICS + NEUTRAL_TOPICS
+        topic_def = next((t for t in all_topics if t["id"] == best_topic_id), None)
+        if topic_def:
+            for item in topic_def.get("words", []):
+                for tok in self._tokenize(str(item)):
+                    tok = _normalize_token(tok)
+                    if tok not in HE_STOPWORDS:
+                        try:
+                            _ = self._model[tok]
+                            winner_words.append(tok)
+                        except: pass
+
+        for i, sv in enumerate(student_vecs):
+            sims = np.dot(winner_vecs, sv)
+            best_idx = np.argmax(sims)
+            matched_word = winner_words[best_idx] if best_idx < len(winner_words) else "?"
+            cost = 1.0 - sims[best_idx]
+
+            if cost < 0.6:
+                pairs.append({
+                    "token": student_words[i],
+                    "matched_to": matched_word,
+                    "topic": best_topic_id,
+                    "cost": round(float(cost), 3)
+                })
+
+        return float(best_dist), best_topic_id, pairs
+
+    def _build_topic_documents(self) -> Dict[str, List[np.ndarray]]:
+        """
+        Builds the 'Topic Clouds' - a collection of vectors for each topic.
+        I do this for both clinical and neutral topics so we can compare against both.
+        """
+        topic_docs = {}
+        all_topics = CLINICAL_TOPICS + NEUTRAL_TOPICS
+
+        for topic in all_topics:
+            raw_items = topic.get("words", [])
+            valid_vectors = []
+            if self._model is None: break
+
+            for item in raw_items:
+                for tok in self._tokenize(str(item)):
+                    tok = _normalize_token(tok)
+                    if tok in HE_STOPWORDS: continue
+                    if topic.get("id") == "self_harm_ideas" and tok in SELF_HARM_IGNORE:
+                        continue
+                    try:
+                        vec = self._model[tok]
+                        valid_vectors.append(vec)
+                    except: continue
+
+            if valid_vectors:
+                topic_docs[topic["id"]] = valid_vectors
+        return topic_docs
+
+    def _tokenize(self, text: str) -> List[str]:
+        for ch in [",", ".", "!", "?", ":", ";", "(", ")", "[", "]", "\n", "-", '"']:
+            text = text.replace(ch, " ")
+        return [t.strip() for t in text.split() if t.strip()]
+
     def _segments_keyword_fallback(self, segments: List[Dict]) -> Dict:
-        """Keyword‑only scoring per segment when vectors are unavailable."""
+        """
+        Simple keyword matching fallback in case the vector model fails to load.
+        """
         segment_scores = []
         total_len = 0
         weighted_sum = 0.0
 
-        # Merge topic words and the built‑in clinical lexicon into one weight map
         kw_weights = dict(CLINICAL_WEIGHTS)
         for topic in CLINICAL_TOPICS:
             w = topic.get("weight", 0.5)
@@ -454,10 +516,10 @@ class HebrewWMDSignal(DistressSignal):
 
         for idx, seg in enumerate(segments):
             seg_text = (seg.get("text") or "").strip()
-            if not seg_text:
-                continue
+            if not seg_text: continue
             tokens = self._tokenize(seg_text)
             seg_len = max(1, len(seg_text))
+
             matched_weights = [kw_weights[t] for t in tokens if t in kw_weights]
             base = max(matched_weights) if matched_weights else 0.0
 
@@ -468,209 +530,19 @@ class HebrewWMDSignal(DistressSignal):
             segment_scores.append({
                 "index": idx,
                 "intensity": intensity,
-                "multiplier": multiplier,
-                "base": round(base, 3),
-                "weighted": round(weighted, 3),
+                "base": round(float(base), 3),
+                "weighted": round(float(weighted), 3),
                 "method": "keyword_fallback"
             })
-
             total_len += seg_len
             weighted_sum += weighted * seg_len
 
-        overall = round(weighted_sum / max(1, total_len), 2)
         return {
-            "score": overall,
-            "metadata": {
-                "algorithm": "keyword_fallback_segments",
-                "is_vector_based": False,
-                "segment_scores": segment_scores,
-                "topic_weights": {t["id"]: float(t.get("weight", 0.5)) for t in CLINICAL_TOPICS},
-                "reason": "semantic_model_not_loaded_or_no_centroids",
-                "topic_labels": TOPIC_LABELS,
-                "model_loaded": bool(self._model is not None),
-                "model_path": HebrewWMDSignal._model_path
-            }
-        }
-
-    # ------------------------ Helpers ------------------------ #
-
-    def _tokenize(self, text: str) -> List[str]:
-        # Basic tokenizer: remove punctuation and split on spaces
-        for ch in [",", ".", "!", "?", ":", ";", "(", ")", "[", "]", "\n"]:
-            text = text.replace(ch, " ")
-        tokens = text.split()
-        return [t.strip() for t in tokens if t.strip()]
-
-    def _build_topic_centroids(self) -> Dict[str, Tuple[List[str], np.ndarray, float]]:
-        """Create a centroid (average vector) for each topic from tokens we can vectorize.
-        Returns: { topic_id: (used_tokens, centroid_vector, topic_weight) }.
-        """
-        centroids = {}
-        missing_topics = []
-        for topic in CLINICAL_TOPICS:
-            raw_items = topic.get("words", [])
-            used_tokens: List[str] = []
-            if self._model is None:
-                break
-            # Split phrases to tokens and keep the ones we can vectorize
-            for item in raw_items:
-                # Reuse our tokenizer to strip punctuation and split Hebrew phrases safely
-                for tok in self._tokenize(str(item)):
-                    tok = _normalize_token(tok)
-                    # Skip generic stopwords inside topic centroids to reduce noise (e.g., 'לא')
-                    if tok in HE_STOPWORDS:
-                        continue
-                    # Filter overly-generic tokens from self-harm centroid
-                    if topic.get("id") == "self_harm_ideas" and tok in SELF_HARM_IGNORE:
-                        continue
-                    try:
-                        # Try getting a vector (fastText supports OOV via subwords)
-                        _ = self._model[tok]
-                        used_tokens.append(tok)
-                    except Exception:
-                        continue
-
-            if not used_tokens:
-                missing_topics.append(topic.get("id"))
-                continue
-
-            vecs = []
-            for tok in used_tokens:
-                try:
-                    vecs.append(self._model[tok])
-                except Exception:
-                    continue
-            centroid = np.mean(vecs, axis=0)
-            centroids[topic["id"]] = (used_tokens, centroid, float(topic.get("weight", 0.5)))
-        if not centroids:
-            print(f"Info: No topic words found in model vocab. Missing topics: {missing_topics}")
-        return centroids
-
-    def _cosine(self, a: np.ndarray, b: np.ndarray) -> float:
-        denom = (np.linalg.norm(a) * np.linalg.norm(b))
-        if denom == 0:
-            return 0.0
-        return float(np.dot(a, b) / denom)
-
-    def _greedy_assignment_distance(self, tokens: List[str], centroids: Dict[str, Tuple[List[str], np.ndarray, float]], has_negation: bool):
-        """Greedy one‑to‑one matching between token vectors and topic centroids.
-        Returns (avg_distance, list_of_matches_for_display)."""
-        # Load token vectors once
-        token_vecs = {}
-        for t in tokens:
-            try:
-                token_vecs[t] = self._model[t]
-            except Exception:
-                continue
-        topics_left = set(centroids.keys())
-        pairs = []  # for metadata
-
-        # Soft rules using anchors: if insomnia anchors present and self-harm not present,
-        # nudge costs to favor insomnia a bit and penalize self-harm slightly.
-        has_insomnia_anchor = any(t in INSOMNIA_ANCHORS for t in tokens)
-        has_selfharm_anchor = any(t in SELF_HARM_ANCHORS for t in tokens)
-        has_anxiety_anchor = any(t in ANXIETY_ANCHORS for t in tokens)
-        has_hopeless_anchor = any(t in HOPELESSNESS_ANCHORS for t in tokens)
-        has_guilt_anchor = any(t in GUILT_ANCHORS for t in tokens)
-        has_rumination_anchor = any(t in RUMINATION_ANCHORS for t in tokens)
-        has_any_distress_anchor = (
-            has_insomnia_anchor or has_selfharm_anchor or has_anxiety_anchor or has_hopeless_anchor or has_rumination_anchor
-        )
-
-        # For each token pick the closest topic, then match best pairs first
-        candidates = []
-        for t in token_vecs.keys():
-            best_topic = None
-            best_cost = 1.0
-            best_sim = -1.0
-            for tid, (_, cvec, sev) in centroids.items():
-                sim = self._cosine(token_vecs[t], cvec)
-                # Base distance
-                cost = 1.0 - sim
-                # Lower the cost slightly for more severe topics so they count more (milder than before)
-                cost *= (1.0 - 0.25 * sev)
-                # If negation words exist, push the cost up slightly
-                if has_negation:
-                    cost += 0.05
-                # Anchor-based tweak (only small nudges):
-                if has_insomnia_anchor and not has_selfharm_anchor:
-                    if tid == "self_harm_ideas":
-                        cost += 0.20
-                    elif tid == "insomnia":
-                        cost -= 0.10
-                # Avoid accidental rumination when there are no rumination anchors
-                if not has_rumination_anchor and tid == "rumination":
-                    cost += 0.15
-                # Extra safety: avoid accidental insomnia tagging when there are no insomnia anchors
-                if not has_insomnia_anchor and tid == "insomnia":
-                    cost += 0.15
-                # Extra safety: when self-harm anchors exist but no guilt anchors, avoid guilt matches
-                if has_selfharm_anchor and not has_guilt_anchor and tid == "guilt":
-                    cost += 0.25
-                # Strongly prefer self-harm topic when encountering self-harm anchors
-                if t in SELF_HARM_ANCHORS and tid == "self_harm_ideas":
-                    cost -= 0.20
-                if cost < best_cost:
-                    best_cost = cost
-                    best_topic = tid
-                if sim > best_sim:
-                    best_sim = sim
-            # Only accept a match if similarity clears the minimum threshold
-            if best_topic is not None and best_sim >= SIM_MIN:
-                # Topic-specific stricter threshold for rumination to reduce false positives
-                if best_topic == "rumination" and best_sim < 0.60:
-                    pass  # skip weak rumination matches
-                else:
-                    candidates.append((t, best_topic, best_cost))
-
-        # Sort by lowest cost first
-        candidates.sort(key=lambda x: x[2])
-        total_cost = 0.0
-        matched = 0
-        for t, tid, cost in candidates:
-            if tid is None:
-                continue
-            if tid not in topics_left:
-                continue
-            topics_left.remove(tid)
-            total_cost += max(0.0, min(2.0, cost))
-            matched += 1
-            pairs.append({"token": t, "topic": tid, "cost": round(float(cost), 3)})
-
-        if matched == 0:
-            return 1.0, []
-        return total_cost / matched, pairs
-
-    def _keyword_fallback(self, text: str, decibels: float) -> dict:
-        """
-        A safety net that uses direct keyword matching if the
-        semantic model is unavailable.
-        """
-        words = text.split()
-        # Find the maximum weight of any clinical word found in the text
-        matched_weights = [CLINICAL_WEIGHTS[w] for w in words if w in CLINICAL_WEIGHTS]
-
-        # If no keywords found, base score is 0
-        base_score = max(matched_weights) if matched_weights else 0.0
-
-        # Apply Acoustic multipliers (same logic as geometric mode)
-        multiplier = 1.0
-        intensity_label = "Normal"
-        if decibels > 75:
-            multiplier = 1.4
-            intensity_label = "Shouting"
-        elif 0 < decibels < 40:
-            multiplier = 1.2
-            intensity_label = "Whispering"
-
-        final_score = round(min(base_score * multiplier, 1.0), 2)
-
-        return {
-            "score": final_score,
+            "score": round(float(weighted_sum / max(1, total_len)), 2),
             "metadata": {
                 "algorithm": "keyword_fallback",
-                "intensity_zone": intensity_label,
-                "is_vector_based": False,
-                "reason": "semantic_model_not_loaded"
+                "segment_scores": segment_scores,
+                "topic_weights": {t["id"]: t["weight"] for t in CLINICAL_TOPICS},
+                "topic_labels": TOPIC_LABELS,
             }
         }

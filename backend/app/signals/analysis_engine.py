@@ -7,7 +7,7 @@ router = APIRouter()
 
 @router.post("/analyze_all")
 async def analyze_all_signals(request: DistressAnalysisRequest):
-    # Set up the analysis parts
+    # Initialize signal processing engines
     entropy_engine = EntropySignal()
     wmd_engine = HebrewWMDSignal()
 
@@ -15,18 +15,19 @@ async def analyze_all_signals(request: DistressAnalysisRequest):
 
     segments = req.get("segments") or []
 
-    # Build one big text for entropy and set up input for the meaning check
+    # Prepare inputs: Entropy needs full context, while WMD needs granular segments
     if segments:
-        # Concatenate segments for entropy calculation
+        # Join segments for global entropy assessment
         full_text = " ".join([s.get("text", "") for s in segments if s.get("text")])
-        # Send the segments to the meaning check so it can score each one
+        # Pass structured segments for per-segment semantic scoring
         semantic_input = {
             "segments": segments,
             "latencies": req.get("latencies") or []
         }
         entropy_input = {"text": full_text}
     else:
-        # Single text path (works with older requests)
+        # Fallback for raw text input (legacy support)
+        # The WMD engine handles internal sentence splitting
         semantic_input = {
             "text": req.get("text", ""),
             "avg_decibels": req.get("avg_decibels", 0.0),
@@ -34,11 +35,11 @@ async def analyze_all_signals(request: DistressAnalysisRequest):
         }
         entropy_input = {"text": req.get("text", "")}
 
-    # Run the checks
+    # Execute analysis
     entropy_res = entropy_engine.analyze(entropy_input)
     wmd_res = wmd_engine.analyze(semantic_input)
 
-    # Summarize how many segments are whisper, normal, or shout
+    # Calculate acoustic intensity distribution (if segments exist)
     acoustic_signal = None
     if segments:
         total = len([s for s in segments if s.get("text")]) or 1
@@ -48,7 +49,7 @@ async def analyze_all_signals(request: DistressAnalysisRequest):
             if label in counts:
                 counts[label] += 1
         distribution = {k: round(v / total, 2) for k, v in counts.items()}
-        # Display score: share of segments that are not normal
+        # Score reflects the ratio of abnormal intensity (whisper/shout)
         non_normal = (counts["whisper"] + counts["shout"]) / total
         acoustic_signal = {
             "score": round(non_normal, 2),
@@ -58,19 +59,23 @@ async def analyze_all_signals(request: DistressAnalysisRequest):
             }
         }
 
-    # Combine the meaning and repetition scores and cap at 1.0
+    # Signal Fusion: Weighted average (60% Semantic, 40% Entropy)
     fused = 0.6 * (wmd_res.get("score", 0.0)) + 0.4 * (entropy_res.get("score", 0.0))
     overall_score = min(fused, 1.0)
 
-    # Critical override: if any segment has a critical alert (e.g., self-harm),
-    # raise the overall score so the main gauge signals urgency during demo.
+    # --- SAFETY OVERRIDE ---
+    # Check for critical markers (e.g., self-harm indications) from the semantic engine.
+    # Policy: Prefer false positives to ensure immediate safety.
     try:
         has_critical = bool(wmd_res.get("metadata", {}).get("has_critical_alert"))
     except Exception:
         has_critical = False
+
     if has_critical:
-        # Strong override for the prototype demo; adjust to 0.9 if you prefer softer.
+        # Immediate escalation to high distress (0.95) upon critical detection,
+        # overriding any conflicting low signals from other engines.
         overall_score = max(overall_score, 0.95)
+
     overall_score = round(overall_score, 2)
 
     signals = {
