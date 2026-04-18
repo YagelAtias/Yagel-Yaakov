@@ -19,6 +19,7 @@ const AnalysisResult = ({ result }) => {
     const wmd = result.signals?.semantic_wmd;
     const entropy = result.signals?.entropy;
     const acoustic = result.signals?.acoustic;
+    const typing = result.signals?.typing_latency;
 
     const isRepetitive = entropy?.metadata?.is_repetitive;
     const isSegmentMode = Array.isArray(wmd?.metadata?.segment_scores) && wmd.metadata.segment_scores.length > 0;
@@ -203,6 +204,20 @@ const AnalysisResult = ({ result }) => {
                         )}
                     </div>
                 </div>
+
+                {/* Typing Latency (if available) */}
+                {typing && (
+                    <div className="dark-card">
+                        <strong style={{ display: 'block', color: '#f3f4f6', marginBottom: 4 }}>דפוסי הקלדה</strong>
+                        <div className="info-text-dark">זיהוי היסוס ועיכובים חריגים בהקלדה.</div>
+                        <div style={{ marginTop: 'auto', paddingTop: 10, display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+                            <span style={{ fontSize: '0.85rem', color: '#9ca3af' }}>הפסקות ארוכות:</span>
+                            <span style={{ fontSize: '1.1rem', fontWeight: 'bold', color: getScoreColor(typing.score) }}>
+                                {typing.metadata?.long_pauses_count || 0}
+                            </span>
+                        </div>
+                    </div>
+                )}
 
                 {/* Acoustic Analysis (Full width if present) */}
                 {acoustic && (
