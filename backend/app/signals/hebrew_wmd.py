@@ -432,8 +432,25 @@ class HebrewWMDSignal(DistressSignal):
 
             critical_alert = (best_topic == "self_harm_ideas")
 
-            intensity = (seg.get("intensity") or "normal").lower()
-            multiplier = INTENSITY_TO_MULTIPLIER.get(intensity, 1.0)
+            word_intensities = {w.get("word"): w.get("intensity") for w in seg.get("words", [])}
+            
+            multiplier = 1.0
+            intensity = "normal"
+            
+            if matched and word_intensities:
+                # If we matched specific distress words, find the highest intensity among them
+                for m in matched:
+                    tok = m["token"]
+                    w_int = word_intensities.get(tok, "normal")
+                    w_mult = INTENSITY_TO_MULTIPLIER.get(w_int, 1.0)
+                    if w_mult > multiplier:
+                        multiplier = w_mult
+                        intensity = w_int
+            else:
+                # Fallback to overall segment intensity if no specific words are provided
+                intensity = (seg.get("intensity") or "normal").lower()
+                multiplier = INTENSITY_TO_MULTIPLIER.get(intensity, 1.0)
+                
             intensity_he = {"whisper": "לחישה", "normal": "דיבור רגיל", "shout": "צעקה"}.get(intensity, "רגיל")
 
             weighted_score = min(base_score * multiplier, 1.0)

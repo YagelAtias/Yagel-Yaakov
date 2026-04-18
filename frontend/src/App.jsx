@@ -4,6 +4,7 @@ import './App.css'
 import AcousticControl from './components/AcousticControl'
 import AnalysisResult from './components/AnalysisResult'
 import SegmentedEditor from './components/SegmentedEditor'
+import AudioRecorder from './components/AudioRecorder'
 
 function App() {
   const [useSegments, setUseSegments] = useState(false)
@@ -75,6 +76,13 @@ function App() {
               onChange={(e) => setText(e.target.value)}
             />
             <AcousticControl decibels={decibels} setDecibels={setDecibels} />
+            <AudioRecorder onAnalysisComplete={(data) => {
+              setResult(data)
+              if (data.transcription_segments && data.transcription_segments.length > 0) {
+                setUseSegments(true)
+                setSegments(data.transcription_segments)
+              }
+            }} />
           </>
         )}
 

@@ -1,9 +1,30 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, File, UploadFile
 from app.schemas import DistressAnalysisRequest
 from app.signals.text_entropy import EntropySignal
 from app.signals.hebrew_wmd import HebrewWMDSignal
+from app.signals.audio_processing import AudioProcessor
 
 router = APIRouter()
+
+@router.post("/analyze_audio")
+async def analyze_audio(file: UploadFile = File(...)):
+    audio_bytes = await file.read()
+    processor = AudioProcessor()
+    audio_result = processor.process_audio(audio_bytes)
+    
+    if audio_result.get("status") == "error":
+        return audio_result
+        
+    segments = audio_result.get("segments", [])
+    
+    # Automatically analyze the resulting segments with the distress engine
+    request = DistressAnalysisRequest(segments=segments)
+    analysis_result = await analyze_all_signals(request)
+    
+    # Merge the transcription info into the response
+    analysis_result["transcription_segments"] = segments
+    return analysis_result
+
 
 @router.post("/analyze_all")
 async def analyze_all_signals(request: DistressAnalysisRequest):
