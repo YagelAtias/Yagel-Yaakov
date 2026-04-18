@@ -12,3 +12,4 @@ class DistressAnalysisRequest(BaseModel):
     segments: Optional[List[Segment]] = None
     latencies: Optional[List[int]] = []
     avg_decibels: Optional[float] = 0.0
+    student_id: Optional[int] = 1  # Default to 1 for the prototype UI

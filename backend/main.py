@@ -1,6 +1,13 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.signals.analysis_engine import router as master_router
+from app.api.auth import router as auth_router
+from app.api.logs import router as logs_router
+from app.db.database import engine
+from app.db import models
+
+# Initialize SQLite database tables
+models.Base.metadata.create_all(bind=engine)
 
 app = FastAPI(
     title="Yagel-Yaakov Platform",
@@ -21,8 +28,10 @@ app.add_middleware(
     allow_headers=['*']
 )
 
-# Include the router with a clean prefix.
+# Include the routers with clean prefixes.
+app.include_router(auth_router, prefix="/api/v2/auth", tags=["Authentication"])
 app.include_router(master_router, prefix="/api/v2", tags=["Multi-Signal Analysis"])
+app.include_router(logs_router, prefix="/api/v2", tags=["Secure Data Access"])
 
 @app.get("/")
 def read_root():

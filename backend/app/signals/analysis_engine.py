@@ -1,14 +1,23 @@
-from fastapi import APIRouter, File, UploadFile
+from fastapi import APIRouter, File, UploadFile, Depends, Form
+from sqlalchemy.orm import Session
 from app.schemas import DistressAnalysisRequest
 from app.signals.text_entropy import EntropySignal
 from app.signals.hebrew_wmd import HebrewWMDSignal
 from app.signals.audio_processing import AudioProcessor
 from app.signals.typing_latency import TypingLatencySignal
 
+# Database imports
+from app.db import database, models
+from app.security.encryption import encrypt_text
+
 router = APIRouter()
 
 @router.post("/analyze_audio")
-async def analyze_audio(file: UploadFile = File(...)):
+async def analyze_audio(
+    file: UploadFile = File(...), 
+    student_id: int = Form(1),
+    db: Session = Depends(database.get_db)
+):
     audio_bytes = await file.read()
     processor = AudioProcessor()
     audio_result = processor.process_audio(audio_bytes)
@@ -19,8 +28,8 @@ async def analyze_audio(file: UploadFile = File(...)):
     segments = audio_result.get("segments", [])
     
     # Automatically analyze the resulting segments with the distress engine
-    request = DistressAnalysisRequest(segments=segments)
-    analysis_result = await analyze_all_signals(request)
+    request = DistressAnalysisRequest(segments=segments, student_id=student_id)
+    analysis_result = await analyze_all_signals(request, db=db)
     
     # Merge the transcription info into the response
     analysis_result["transcription_segments"] = segments
@@ -28,7 +37,10 @@ async def analyze_audio(file: UploadFile = File(...)):
 
 
 @router.post("/analyze_all")
-async def analyze_all_signals(request: DistressAnalysisRequest):
+async def analyze_all_signals(
+    request: DistressAnalysisRequest,
+    db: Session = Depends(database.get_db)
+):
     # Initialize signal processing engines
     entropy_engine = EntropySignal()
     wmd_engine = HebrewWMDSignal()
@@ -119,6 +131,44 @@ async def analyze_all_signals(request: DistressAnalysisRequest):
          
     if acoustic_signal is not None:
         signals["acoustic"] = acoustic_signal
+
+    # --- PHASE 2: DATABASE PERSISTENCE & ENCRYPTION ---
+    # 1. Ensure a dummy student exists for UI backward compatibility
+    student = db.query(models.Student).filter(models.Student.id == request.student_id).first()
+    if not student:
+        dummy_org = db.query(models.Organization).first()
+        if not dummy_org:
+            dummy_org = models.Organization(name="Demo School")
+            db.add(dummy_org)
+            db.commit()
+            db.refresh(dummy_org)
+            
+        student = models.Student(
+            id=request.student_id,
+            first_name="Anonymous", 
+            last_name="Student", 
+            organization_id=dummy_org.id
+        )
+        db.add(student)
+        db.commit()
+
+    # 2. Extract raw text for encryption
+    raw_text = full_text if segments else req.get("text", "")
+    
+    # 3. MILITARY-GRADE ENCRYPTION: Encrypt the text before it touches the hard drive
+    encrypted_text = encrypt_text(raw_text)
+    
+    # 4. Save the secured log to the database
+    new_log = models.DistressLog(
+        student_id=request.student_id,
+        encrypted_raw_text=encrypted_text,
+        overall_score=overall_score,
+        has_critical_alert=has_critical,
+        signals_metadata=signals
+    )
+    db.add(new_log)
+    db.commit()
+    # ---------------------------------------------------
 
     return {
         "status": "success",
