@@ -29,19 +29,30 @@ HE_STOPWORDS = {
 # --- 1. Clinical (Distress) Topics ---
 # These are the target clusters we want to detect.
 CLINICAL_TOPICS: List[Dict] = [
-    {"id": "sadness", "weight": 0.6, "words": ["עצוב", "עצובה", "דכדוך", "עצבות", "בוכה", "לב שבור", "כואב לי", "מדוכא", "מדוכאת"]},
-    {"id": "hopelessness", "weight": 0.9, "words": ["ייאוש", "אין תקווה", "חסר סיכוי", "חסרת סיכוי", "למה לנסות", "אבוד", "אבודה", "חסר תוחלת", "נגמר לי"]},
-    {"id": "rumination", "weight": 0.7, "words": ["חושב שוב ושוב", "חוזר", "נתקע במחשבות", "טוחן", "לופ", "הראש לא מפסיק", "מחשבות טורדניות", "לא נרגע"]},
-    {"id": "withdrawal", "weight": 0.6, "words": ["נסוג", "סגור", "סגורה", "מתרחק", "מתרחקת", "לבד", "לא רוצה לראות אף אחד", "התבודדות", "מנותק", "מנותקת"]},
-    {"id": "guilt", "weight": 0.6, "words": ["אשם", "אשמה", "טעות שלי", "אשמתי", "בגללי", "יכולתי למנוע", "חרטה", "מכה על חטא"]},
-    {"id": "fatigue", "weight": 0.5, "words": ["עייף", "עייפה", "עייפות", "אין כוח", "מותש", "מותשת", "גמור", "גמורה", "שחוק", "שחוקה", "אין אנרגיה", "כבד לי"]},
+    {"id": "sadness", "weight": 0.6,
+     "words": ["עצוב", "עצובה", "דכדוך", "עצבות", "בוכה", "לב שבור", "כואב לי", "מדוכא", "מדוכאת"]},
+    {"id": "hopelessness", "weight": 0.9,
+     "words": ["ייאוש", "אין תקווה", "חסר סיכוי", "חסרת סיכוי", "למה לנסות", "אבוד", "אבודה", "חסר תוחלת", "נגמר לי", "מיואש", "מיואשת"]},
+    {"id": "rumination", "weight": 0.7,
+     "words": ["חושב שוב ושוב", "חוזר", "נתקע במחשבות", "טוחן", "לופ", "הראש לא מפסיק", "מחשבות טורדניות", "לא נרגע"]},
+    {"id": "withdrawal", "weight": 0.6,
+     "words": ["נסוג", "סגור", "סגורה", "מתרחק", "מתרחקת", "לבד", "לא רוצה לראות אף אחד", "התבודדות", "מנותק",
+               "מנותקת"]},
+    {"id": "guilt", "weight": 0.6,
+     "words": ["אשם", "אשמה", "טעות שלי", "אשמתי", "בגללי", "יכולתי למנוע", "חרטה", "מכה על חטא"]},
+    {"id": "fatigue", "weight": 0.5,
+     "words": ["עייף", "עייפה", "עייפות", "אין כוח", "מותש", "מותשת", "גמור", "גמורה", "שחוק", "שחוקה", "אין אנרגיה",
+               "כבד לי"]},
     {"id": "self_harm_ideas", "weight": 0.95, "words": [
         "מוות", "למות", "לא לחיות", "להיעלם", "קץ",
         "להתאבד", "התאבדות", "אתאבד", "להרוג את עצמי",
-        "רוצה לגמור עם זה", "לחדול"
+        "רוצה לגמור עם זה", "לחדול", "להרוג", "התאבד"
     ]},
-    {"id": "anxiety_agitation", "weight": 0.7, "words": ["חרדה", "לחץ", "חוסר מנוחה", "דפיקות לב", "מחנק", "משתגע", "משתגעת", "מתוח", "מתוחה", "קצר בנשימה"]},
-    {"id": "insomnia", "weight": 0.6, "words": ["נדודי שינה", "לא ישן", "לא ישנה", "לא הצלחתי לישון", "הפוך", "הפוכה", "ער כל הלילה", "מסתכל על התקרה", "לישון", "שינה"]},
+    {"id": "anxiety_agitation", "weight": 0.7,
+     "words": ["חרדה", "לחץ", "חוסר מנוחה", "דפיקות לב", "מחנק", "משתגע", "משתגעת", "מתוח", "מתוחה", "קצר בנשימה", "לחוצה", "לחוץ", "בלחץ"]},
+    {"id": "insomnia", "weight": 0.6,
+     "words": ["נדודי שינה", "לא ישן", "לא ישנה", "לא הצלחתי לישון", "הפוך", "הפוכה", "ער כל הלילה", "מסתכל על התקרה",
+               "לישון", "שינה", "ישנתי", "נדודי", "לילה"]},
 ]
 
 # --- 2. Neutral (Control) Topics ---
@@ -49,9 +60,14 @@ CLINICAL_TOPICS: List[Dict] = [
 # If a student talks about "tests" or "sleeping" in a normal context, the model should match these topics
 # instead of defaulting to "Anxiety" or "Insomnia".
 NEUTRAL_TOPICS: List[Dict] = [
-    {"id": "school_academic", "weight": 0.0, "words": ["מבחן", "שיעורי בית", "ללמוד", "כיתה", "מורה", "ציון", "מתמטיקה", "היסטוריה", "ספרות", "ביולוגיה", "מחברת", "ספר", "שאלה", "תשובה"]},
-    {"id": "daily_routine", "weight": 0.0, "words": ["אוכל", "לישון", "חברים", "משחק", "הפסקה", "בוקר", "ערב", "טלפון", "מקלחת", "בגד", "אוטובוס", "הולך", "חוזר", "שינה"]},
-    {"id": "positive_mood", "weight": 0.0, "words": ["שמח", "כיף", "מצחיק", "נהנה", "טוב", "סבבה", "אחלה", "רגוע", "אוהב", "מעולה", "מצויין"]}
+    {"id": "school_academic", "weight": 0.0,
+     "words": ["מבחן", "שיעורי בית", "ללמוד", "כיתה", "מורה", "ציון", "מתמטיקה", "היסטוריה", "ספרות", "ביולוגיה",
+               "מחברת", "ספר", "שאלה", "תשובה"]},
+    {"id": "daily_routine", "weight": 0.0,
+     "words": ["אוכל", "לישון", "חברים", "משחק", "הפסקה", "בוקר", "ערב", "טלפון", "מקלחת", "בגד", "אוטובוס", "הולך",
+               "חוזר", "שינה"]},
+    {"id": "positive_mood", "weight": 0.0,
+     "words": ["שמח", "כיף", "מצחיק", "נהנה", "טוב", "סבבה", "אחלה", "רגוע", "אוהב", "מעולה", "מצויין"]}
 ]
 
 # Human-friendly Hebrew labels for UI display
@@ -72,17 +88,13 @@ TOPIC_LABELS: Dict[str, str] = {
 
 # --- Anchors & Constants ---
 # I use these anchor sets to perform safety checks and context window analysis.
-INSOMNIA_ANCHORS = {"לישון", "שינה", "ישנתי", "נדודי", "לילה"}
-# I included base forms here to ensure we catch self-harm even if normalization fails.
-SELF_HARM_ANCHORS = {"מוות", "למות", "להיעלם", "קץ", "להתאבד", "התאבדות", "אתאבד", "להרוג", "להרוג את עצמי", "לא לחיות", "התאבד"}
-SELF_HARM_IGNORE = {"די", "סוף"} # Context dependent ignore list
-ANXIETY_ANCHORS = {"חרדה", "לחץ", "לחוצה", "לחוץ", "בלחץ", "מתוח"}
-HOPELESSNESS_ANCHORS = {"ייאוש", "מיואש", "מיואשת", "אבוד", "אבודה"}
+SELF_HARM_IGNORE = {"די", "סוף"}  # Context dependent ignore list
 # Words to ignore during the semantic match (too generic)
 NEUTRAL_IGNORE = {"מחר", "היום", "מחרתיים", "יש", "אלך", "אילך", "אעלה", "אבוא"}
 
 # Words implying negation or difficulty. I use these for the 'window logic' to detect context.
 DISTRESS_CONTEXT_WORDS = {'לא', 'אין', 'בלי', 'קשה', 'איני', 'בלתי', 'נורא', 'סיוט', 'רע', 'אפס', 'נמאס', 'כוח'}
+
 
 def _normalize_token(tok: str) -> str:
     """
@@ -103,9 +115,9 @@ def _normalize_token(tok: str) -> str:
         "מסכן", "מסכנה",
         "מפחד", "מפחדת",
         "לבד",
-        "לישון", "שינה", "ישן", "נרדם", # Protected for Insomnia detection
-        "להתאבד", "התאבדות", "אתאבד", # Critical for safety override
-        "לחיות", "חיים" # Added to prevent stripping 'L' from Lichyot
+        "לישון", "שינה", "ישן", "נרדם",  # Protected for Insomnia detection
+        "להתאבד", "התאבדות", "אתאבד",  # Critical for safety override
+        "לחיות", "חיים"  # Added to prevent stripping 'L' from Lichyot
     }
 
     if tok in PROTECTED_WORDS:
@@ -168,13 +180,16 @@ class HebrewWMDSignal(DistressSignal):
                     model = self._try_load_from_np_txt(d)
                     if model is None: continue
                     HebrewWMDSignal._model = model
-                    try: HebrewWMDSignal._model.fill_norms(force=True)
-                    except: pass
+                    try:
+                        HebrewWMDSignal._model.fill_norms(force=True)
+                    except:
+                        pass
                     print(f"Semantic model loaded from: {d}")
                     HebrewWMDSignal._model_path = str(d)
                     model_loaded = True
                     break
-                except Exception: continue
+                except Exception:
+                    continue
 
             if not model_loaded:
                 for p in model_files:
@@ -183,13 +198,16 @@ class HebrewWMDSignal(DistressSignal):
                         model = self._try_load_any(str(p))
                         if model is None: continue
                         HebrewWMDSignal._model = model
-                        try: HebrewWMDSignal._model.fill_norms(force=True)
-                        except: pass
+                        try:
+                            HebrewWMDSignal._model.fill_norms(force=True)
+                        except:
+                            pass
                         print(f"Semantic model loaded from: {p}")
                         HebrewWMDSignal._model_path = str(p)
                         model_loaded = True
                         break
-                    except Exception: continue
+                    except Exception:
+                        continue
 
             if not model_loaded:
                 print("Warning: Model not loaded. Using keyword fallback.")
@@ -223,13 +241,15 @@ class HebrewWMDSignal(DistressSignal):
                     with open(wp, "r", encoding="utf-8") as f:
                         words = [line.strip() for line in f if line.strip()]
                 break
-            except: continue
+            except:
+                continue
         for vp in vec_candidates:
             if not vp.exists(): continue
             try:
                 vecs = np.load(str(vp))
                 break
-            except: continue
+            except:
+                continue
 
         if words is None or vecs is None: return None
         if len(words) != vecs.shape[0]: return None
@@ -242,8 +262,10 @@ class HebrewWMDSignal(DistressSignal):
         words = text.split()
         vectors = []
         for w in words:
-            try: vectors.append(self._model[w])
-            except: continue
+            try:
+                vectors.append(self._model[w])
+            except:
+                continue
         if not vectors: return np.zeros(self._model.vector_size)
         return np.mean(vectors, axis=0)
 
@@ -319,7 +341,7 @@ class HebrewWMDSignal(DistressSignal):
                         for topic in CLINICAL_TOPICS:
                             if t in topic["words"]:
                                 best_topic = topic["id"]
-                                base_score = float(topic["weight"]) # Use defined weight
+                                base_score = float(topic["weight"])  # Use defined weight
                                 method = "keyword_rescue"
                                 matched = [{"token": t, "matched_to": t, "topic": best_topic, "cost": 0.0}]
                                 found_rescue = True
@@ -342,21 +364,25 @@ class HebrewWMDSignal(DistressSignal):
                                 return True
                     return False
 
+                # Fetch the lists dynamically from our topics dictionary so we don't have hardcoded constants
+                self_harm_words = next((t["words"] for t in CLINICAL_TOPICS if t["id"] == "self_harm_ideas"), [])
+                sleep_roots = set(next((t["words"] for t in CLINICAL_TOPICS if t["id"] == "insomnia"), []))
+
                 # --- 1. OVERRIDE: SELF HARM / LIFE NEGATION ---
                 life_roots = {'לחיות', 'חיים'}
                 is_negated_life = _check_negation_window(life_roots)
-                has_selfharm_keyword = any(t in SELF_HARM_ANCHORS for t in norm_tokens)
+                has_selfharm_keyword = any(t in self_harm_words for t in norm_tokens)
 
                 if has_selfharm_keyword or is_negated_life:
                     best_topic = "self_harm_ideas"
                     base_score = 0.95
                     method = "critical_override"
-                    trigger_word = next((t for t in norm_tokens if t in life_roots or t in SELF_HARM_ANCHORS), "סכנה")
-                    matched = [{"token": trigger_word, "matched_to": "סכנת חיים", "topic": "self_harm_ideas", "cost": 0.0}]
+                    trigger_word = next((t for t in norm_tokens if t in life_roots or t in self_harm_words), "סכנה")
+                    matched = [
+                        {"token": trigger_word, "matched_to": "סכנת חיים", "topic": "self_harm_ideas", "cost": 0.0}]
 
                 # --- 2. OVERRIDE: INSOMNIA LOGIC ---
                 elif best_topic != "self_harm_ideas":
-                    sleep_roots = {'לישון', 'ישן', 'שינה', 'נרדם'}
                     is_distressed_sleep = _check_negation_window(sleep_roots)
 
                     if is_distressed_sleep:
@@ -364,7 +390,8 @@ class HebrewWMDSignal(DistressSignal):
                         if is_vector_distress:
                             base_score = max(base_score, 0.85)
                             matched_token = next((t for t in norm_tokens if t in sleep_roots), "שינה")
-                            pairs.insert(0, {"token": matched_token, "matched_to": "נדודי שינה", "topic": "insomnia", "cost": 0.0})
+                            pairs.insert(0, {"token": matched_token, "matched_to": "נדודי שינה", "topic": "insomnia",
+                                             "cost": 0.0})
                             matched = pairs
                             method = "hybrid_distress"
                         else:
@@ -454,7 +481,8 @@ class HebrewWMDSignal(DistressSignal):
                 v = v / np.linalg.norm(v)
                 student_vecs.append(v)
                 student_words.append(t)
-            except: continue
+            except:
+                continue
 
         if not student_vecs:
             return 1.0, None, []
@@ -504,7 +532,8 @@ class HebrewWMDSignal(DistressSignal):
                             try:
                                 _ = self._model[tok]
                                 target_words.append(tok)
-                            except: pass
+                            except:
+                                pass
 
             for i, sv in enumerate(student_vecs):
                 sims = np.dot(target_vecs, sv)
@@ -541,7 +570,8 @@ class HebrewWMDSignal(DistressSignal):
                     try:
                         vec = self._model[tok]
                         valid_vectors.append(vec)
-                    except: continue
+                    except:
+                        continue
 
             if valid_vectors:
                 topic_docs[topic["id"]] = valid_vectors
