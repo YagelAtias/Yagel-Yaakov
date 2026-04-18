@@ -24,3 +24,7 @@ dist/
 .idea/
 *.iml
 .DS_Store
+
+# Databases
+*.db
+*.sqlite3
