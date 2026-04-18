@@ -8,7 +8,15 @@ const AudioRecorder = ({ onAnalysisComplete }) => {
 
   const startRecording = async () => {
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      // Disable browser audio filters because they heavily distort frequencies and confuse AI models.
+      // Whisper works best with raw, uncompressed audio.
+      const stream = await navigator.mediaDevices.getUserMedia({ 
+        audio: {
+            noiseSuppression: false,
+            echoCancellation: false,
+            autoGainControl: false
+        } 
+      });
       mediaRecorderRef.current = new MediaRecorder(stream);
       audioChunksRef.current = [];
 
@@ -19,7 +27,7 @@ const AudioRecorder = ({ onAnalysisComplete }) => {
       };
 
       mediaRecorderRef.current.onstop = async () => {
-        const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/wav' });
+        const audioBlob = new Blob(audioChunksRef.current, { type: mediaRecorderRef.current.mimeType });
         await sendAudioToServer(audioBlob);
       };
 
@@ -43,7 +51,8 @@ const AudioRecorder = ({ onAnalysisComplete }) => {
   const sendAudioToServer = async (blob) => {
     setLoading(true);
     const formData = new FormData();
-    formData.append('file', blob, 'recording.wav');
+    // Use .webm extension because browsers record in WebM (Opus) natively
+    formData.append('file', blob, 'recording.webm');
 
     try {
       const response = await fetch('http://127.0.0.1:8000/api/v2/analyze_audio', {
