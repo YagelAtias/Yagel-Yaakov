@@ -7,7 +7,7 @@ router = APIRouter()
 # CONFIGURATION CONSTANTS
 MIN_TEXT_LENGTH = 30  # Text shorter than this is unreliable for compression
 MAX_SEVERITY_RATIO = 3.0  # The ratio that equals "100% score" (1.0)
-RUMINATION_THRESHOLD = 1.5  # The ratio where we officially flag "is_repetitive"
+RUMINATION_THRESHOLD = 1.5  # The ratio where the text is officially flagged as "is_repetitive"
 
 
 class EntropySignal(DistressSignal):

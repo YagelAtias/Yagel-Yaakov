@@ -9,14 +9,14 @@ class TypingLatencySignal(DistressSignal):
         """
         latencies = data.get("latencies", [])
         
-        # We need a minimum number of keystrokes to establish a baseline typing speed
+        # Minimum number of keystrokes needed to establish a baseline typing speed
         if not latencies or len(latencies) < 10:
             return {"score": 0.0, "metadata": {"skip_reason": "not_enough_keystrokes"}}
             
         arr = np.array(latencies)
         
         # Filter out abnormally long pauses (e.g., someone walking away from the keyboard for 5 minutes)
-        # We cap legitimate "hesitation" at 10,000 ms (10 seconds)
+        # Cap legitimate "hesitation" at 10,000 ms (10 seconds)
         arr = arr[arr < 10000]
         
         if len(arr) < 10:
@@ -39,7 +39,7 @@ class TypingLatencySignal(DistressSignal):
         # 3. Pause Score: 0% is fluent, 10%+ is highly hesitant/frozen
         pause_score = min(pause_ratio / 0.10, 1.0)
         
-        # We weight hesitation pauses the heaviest, as freezing is a strong clinical indicator
+        # Weight hesitation pauses the heaviest, as freezing is a strong clinical indicator
         final_score = (0.2 * delay_score) + (0.3 * variance_score) + (0.5 * pause_score)
         
         return {

@@ -8,7 +8,7 @@ from .signal_base import DistressSignal
 from typing import List, Dict, Tuple
 
 # Mapping voice labels to numeric multipliers.
-# I use this to amplify the distress score if the student is shouting or whispering.
+# Amplifies the distress score if the student is shouting or whispering.
 INTENSITY_TO_MULTIPLIER = {
     "whisper": 1.2,
     "normal": 1.0,
@@ -16,7 +16,7 @@ INTENSITY_TO_MULTIPLIER = {
 }
 
 # Minimum cosine similarity threshold.
-# I lowered this slightly to 0.40 because we now have neutral topics to filter out noise.
+# Lowered to 0.40 because neutral topics are now used to filter out noise.
 SIM_MIN = 0.40
 
 # Standard Hebrew stopwords list
@@ -27,7 +27,7 @@ HE_STOPWORDS = {
 }
 
 # --- 1. Clinical (Distress) Topics ---
-# These are the target clusters we want to detect.
+# Target clusters for distress detection.
 CLINICAL_TOPICS: List[Dict] = [
     {"id": "sadness", "weight": 0.6,
      "words": ["עצוב", "עצובה", "דכדוך", "עצבות", "בוכה", "לב שבור", "כואב לי", "מדוכא", "מדוכאת"]},
@@ -56,8 +56,8 @@ CLINICAL_TOPICS: List[Dict] = [
 ]
 
 # --- 2. Neutral (Control) Topics ---
-# I added these to solve the "False Positive" issue.
-# If a student talks about "tests" or "sleeping" in a normal context, the model should match these topics
+# Added to solve False Positives.
+# If the text mentions "tests" or "sleeping" in a normal context, the model should match these topics
 # instead of defaulting to "Anxiety" or "Insomnia".
 NEUTRAL_TOPICS: List[Dict] = [
     {"id": "school_academic", "weight": 0.0,
@@ -67,7 +67,7 @@ NEUTRAL_TOPICS: List[Dict] = [
      "words": ["אוכל", "לישון", "חברים", "משחק", "הפסקה", "בוקר", "ערב", "טלפון", "מקלחת", "בגד", "אוטובוס", "הולך",
                "חוזר", "שינה"]},
     {"id": "positive_mood", "weight": 0.0,
-     "words": ["שמח", "כיף", "מצחיק", "נהנה", "טוב", "סבבה", "אחלה", "רגוע", "אוהב", "מעולה", "מצויין"]}
+     "words": ["שמח", "כיף", "מצחיק", "נהנה", "טוב", "סבבה", "אחלה", "רגוע", "אוהב", "מעולה", "מצויין", "בסדר"]}
 ]
 
 # Human-friendly Hebrew labels for UI display
@@ -87,19 +87,19 @@ TOPIC_LABELS: Dict[str, str] = {
 }
 
 # --- Anchors & Constants ---
-# I use these anchor sets to perform safety checks and context window analysis.
+# Anchor sets for safety checks and context window analysis.
 SELF_HARM_IGNORE = {"די", "סוף"}  # Context dependent ignore list
 # Words to ignore during the semantic match (too generic)
 NEUTRAL_IGNORE = {"מחר", "היום", "מחרתיים", "יש", "אלך", "אילך", "אעלה", "אבוא"}
 
-# Words implying negation or difficulty. I use these for the 'window logic' to detect context.
+# Words implying negation or difficulty. Used in the 'window logic' to detect context.
 DISTRESS_CONTEXT_WORDS = {'לא', 'אין', 'בלי', 'קשה', 'איני', 'בלתי', 'נורא', 'סיוט', 'רע', 'אפס', 'נמאס', 'כוח'}
 
 
 def _normalize_token(tok: str) -> str:
     """
     Light Hebrew normalization logic.
-    I added a specific 'Protection' layer here because standard normalization was stripping
+    A specific 'Protection' layer is added here because standard normalization strips
     critical prefixes (like the 'M' in 'M-yoash'), causing missed detections.
     """
     if not tok:
@@ -117,7 +117,8 @@ def _normalize_token(tok: str) -> str:
         "לבד",
         "לישון", "שינה", "ישן", "נרדם",  # Protected for Insomnia detection
         "להתאבד", "התאבדות", "אתאבד",  # Critical for safety override
-        "לחיות", "חיים"  # Added to prevent stripping 'L' from Lichyot
+        "לחיות", "חיים",  # Added to prevent stripping 'L' from Lichyot
+        "בסדר"  # Prevent 'B' from being stripped
     }
 
     if tok in PROTECTED_WORDS:
@@ -333,20 +334,25 @@ class HebrewWMDSignal(DistressSignal):
             else:
                 dist, best_topic, pairs = self._calculate_relaxed_wmd(norm_tokens, topic_docs, has_neg)
 
-                # --- KEYWORD RESCUE (NEW) ---
-                # If vectors failed (OOV) or gave a 0 score, check strictly against keywords.
-                if best_topic is None or (dist == 1.0 and not pairs):
-                    for t in norm_tokens:
-                        found_rescue = False
-                        for topic in CLINICAL_TOPICS:
-                            if t in topic["words"]:
-                                best_topic = topic["id"]
-                                base_score = float(topic["weight"])  # Use defined weight
-                                method = "keyword_rescue"
-                                matched = [{"token": t, "matched_to": t, "topic": best_topic, "cost": 0.0}]
-                                found_rescue = True
-                                break
-                        if found_rescue: break
+                # --- EXACT KEYWORD OVERRIDE ---
+                # W2V often groups antonyms (e.g. "עצוב" and "שמח") together because they share context.
+                # If an exact distress word exists, it MUST override the W2V topic to prevent it from being 
+                # neutralized by the positive_mood filter.
+                keyword_match = None
+                for t in norm_tokens:
+                    for topic in CLINICAL_TOPICS + NEUTRAL_TOPICS:
+                        if t in topic["words"]:
+                            keyword_match = {"token": t, "topic": topic["id"], "weight": float(topic["weight"])}
+                            break
+                    if keyword_match: break
+                
+                if keyword_match:
+                    best_topic = keyword_match["topic"]
+                    base_score = keyword_match["weight"]
+                    method = "exact_keyword"
+                    matched = [{"token": keyword_match["token"], "matched_to": keyword_match["token"], "topic": best_topic, "cost": 0.0}]
+                    # If we found an exact keyword, we don't need WMD pairs for it
+                    pairs = matched
 
                 # --- CONTEXT CHECKER HELPER ---
                 def _check_negation_window(target_roots):
@@ -364,7 +370,7 @@ class HebrewWMDSignal(DistressSignal):
                                 return True
                     return False
 
-                # Fetch the lists dynamically from our topics dictionary so we don't have hardcoded constants
+                # Fetch the lists dynamically from the topics dictionary to avoid hardcoded constants
                 self_harm_words = next((t["words"] for t in CLINICAL_TOPICS if t["id"] == "self_harm_ideas"), [])
                 sleep_roots = set(next((t["words"] for t in CLINICAL_TOPICS if t["id"] == "insomnia"), []))
 
@@ -408,16 +414,16 @@ class HebrewWMDSignal(DistressSignal):
                         matched = []
 
                     elif best_topic == "positive_mood":
-                        positive_roots = {'טוב', 'שמח', 'כיף', 'נהנה', 'רגוע', 'מעולה', 'סבבה', 'אחלה'}
+                        positive_roots = {'טוב', 'שמח', 'כיף', 'נהנה', 'רגוע', 'מעולה', 'סבבה', 'אחלה', 'בסדר'}
                         is_negated_positive = _check_negation_window(positive_roots)
                         if is_negated_positive:
                             best_topic = "sadness"
                             sim = max(0.0, 1.0 - dist)
-                            base_score = float(sim)
+                            base_score = max(float(sim), 0.6)  # Guarantee at least 0.6 for negated positive
                             method = "negated_positive_flip"
 
                 # --- 3. FINAL NEUTRAL FILTER ---
-                if best_topic in neutral_ids and method in ["relaxed_wmd", "keyword_rescue"]:
+                if best_topic in neutral_ids and method not in ["exact_keyword", "critical_override"]:
                     base_score = 0.0
                     method = "neutral_match"
                     matched = []
@@ -425,7 +431,15 @@ class HebrewWMDSignal(DistressSignal):
                     # Only recalculate base_score if it wasn't already set by a Rescue or Override
                     if base_score == 0.0:
                         sim = max(0.0, 1.0 - dist)
-                        base_score = float(sim)
+                        
+                        # BALANCE FIX: Softer dampening based on distress ratio
+                        valid_len = max(1, len(tokens))
+                        match_count = len(pairs)
+                        ratio = min(1.0, match_count / valid_len)
+                        
+                        # Soft multiplier: guarantees at least 50% of the similarity score, scales to 100%
+                        base_score = float(sim) * (0.5 + (0.5 * ratio))
+                        
                     matched = pairs
                     if has_neg and base_score > 0.2:
                         base_score *= 0.5
@@ -438,7 +452,7 @@ class HebrewWMDSignal(DistressSignal):
             intensity = "normal"
             
             if matched and word_intensities:
-                # If we matched specific distress words, find the highest intensity among them
+                # If specific distress words are matched, find the highest intensity among them
                 for m in matched:
                     tok = m["token"]
                     w_int = word_intensities.get(tok, "normal")
