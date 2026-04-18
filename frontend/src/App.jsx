@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 import './App.css'
 // Custom components
 import AcousticControl from './components/AcousticControl'
@@ -14,6 +14,18 @@ function App() {
   const [result, setResult] = useState(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  
+  // Typing Latency Keylogger
+  const latenciesRef = useRef([])
+  const lastKeyPressTimeRef = useRef(null)
+
+  const handleKeyDown = () => {
+    const now = Date.now()
+    if (lastKeyPressTimeRef.current) {
+      latenciesRef.current.push(now - lastKeyPressTimeRef.current)
+    }
+    lastKeyPressTimeRef.current = now
+  }
 
   const analyzeDistress = async () => {
     setError('')
@@ -33,8 +45,8 @@ function App() {
     setLoading(true)
     try {
       const payload = useSegments
-        ? { segments: segments }
-        : { text: text, avg_decibels: parseFloat(decibels) }
+        ? { segments: segments, latencies: latenciesRef.current }
+        : { text: text, avg_decibels: parseFloat(decibels), latencies: latenciesRef.current }
 
       const response = await fetch('http://127.0.0.1:8000/api/v2/analyze_all', {
         method: 'POST',
@@ -74,6 +86,7 @@ function App() {
               rows="4"
               value={text}
               onChange={(e) => setText(e.target.value)}
+              onKeyDown={handleKeyDown}
             />
             <AcousticControl decibels={decibels} setDecibels={setDecibels} />
             <AudioRecorder onAnalysisComplete={(data) => {
