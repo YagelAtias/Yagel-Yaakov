@@ -3,6 +3,7 @@ from app.schemas import DistressAnalysisRequest
 from app.signals.text_entropy import EntropySignal
 from app.signals.hebrew_wmd import HebrewWMDSignal
 from app.signals.audio_processing import AudioProcessor
+from app.signals.typing_latency import TypingLatencySignal
 
 router = APIRouter()
 
@@ -31,6 +32,7 @@ async def analyze_all_signals(request: DistressAnalysisRequest):
     # Initialize signal processing engines
     entropy_engine = EntropySignal()
     wmd_engine = HebrewWMDSignal()
+    latency_engine = TypingLatencySignal()
 
     req = request.model_dump()
 
@@ -59,6 +61,9 @@ async def analyze_all_signals(request: DistressAnalysisRequest):
     # Execute analysis
     entropy_res = entropy_engine.analyze(entropy_input)
     wmd_res = wmd_engine.analyze(semantic_input)
+    
+    latency_input = {"latencies": req.get("latencies") or []}
+    latency_res = latency_engine.analyze(latency_input)
 
     # Calculate acoustic intensity distribution (if segments exist)
     acoustic_signal = None
@@ -80,8 +85,13 @@ async def analyze_all_signals(request: DistressAnalysisRequest):
             }
         }
 
-    # Signal Fusion: Weighted average (60% Semantic, 40% Entropy)
-    fused = 0.6 * (wmd_res.get("score", 0.0)) + 0.4 * (entropy_res.get("score", 0.0))
+    # Signal Fusion: Adjust weights if typing latency data is valid
+    latency_score = latency_res.get("score", 0.0)
+    if latency_score > 0:
+        fused = 0.5 * (wmd_res.get("score", 0.0)) + 0.3 * (entropy_res.get("score", 0.0)) + 0.2 * latency_score
+    else:
+        fused = 0.6 * (wmd_res.get("score", 0.0)) + 0.4 * (entropy_res.get("score", 0.0))
+        
     overall_score = min(fused, 1.0)
 
     # --- SAFETY OVERRIDE ---
@@ -103,6 +113,10 @@ async def analyze_all_signals(request: DistressAnalysisRequest):
         "entropy": entropy_res,
         "semantic_wmd": wmd_res
     }
+    
+    if latency_res.get("score", 0.0) > 0 or latency_res.get("metadata", {}).get("skip_reason") is None:
+         signals["typing_latency"] = latency_res
+         
     if acoustic_signal is not None:
         signals["acoustic"] = acoustic_signal
 
