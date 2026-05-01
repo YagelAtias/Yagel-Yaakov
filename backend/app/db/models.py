@@ -37,6 +37,11 @@ class Student(Base):
     id = Column(Integer, primary_key=True, index=True)
     first_name = Column(String, nullable=False)
     last_name = Column(String, nullable=False)
+    
+    # Student login credentials (Optional until they register on the app)
+    email = Column(String, unique=True, index=True, nullable=True)
+    hashed_password = Column(String, nullable=True)
+    
     grade_level = Column(String)
     organization_id = Column(Integer, ForeignKey("organizations.id"))
     classroom_id = Column(Integer, ForeignKey("classrooms.id"), nullable=True)
@@ -47,6 +52,7 @@ class Student(Base):
     distress_logs = relationship("DistressLog", back_populates="student")
     grades = relationship("Grade", back_populates="student")
     dorm_leaves = relationship("DormLeave", back_populates="student")
+    bagrut_records = relationship("BagrutStatus", back_populates="student")
 
 class Classroom(Base):
     """Links Teachers to Students to restrict who can see whose data."""
@@ -61,6 +67,7 @@ class Classroom(Base):
     organization = relationship("Organization", back_populates="classrooms")
     teacher = relationship("User", back_populates="classrooms")
     students = relationship("Student", back_populates="classroom")
+    exams = relationship("Exam", back_populates="classroom")
 
 class DistressLog(Base):
     """Highly confidential analysis output. Text is ENCRYPTED."""
@@ -96,20 +103,57 @@ class Grade(Base):
     student = relationship("Student", back_populates="grades")
 
 class DormLeave(Base):
-    """Tracks boarding school (Ulpana/Yeshiva) weekend leave and dorm status."""
+    """Tracks boarding school (Ulpana/Yeshiva) dorm status and leave requests."""
     __tablename__ = "dorm_leaves"
 
     id = Column(Integer, primary_key=True, index=True)
     student_id = Column(Integer, ForeignKey("students.id"), nullable=False)
     
-    # e.g., "Home - Jerusalem", "Staying for Shabbat"
+    # e.g., "mid_week", "shabbat_stay", "shabbat_home", "temporary"
+    leave_type = Column(String, nullable=False)
+    
+    # e.g., "Doctor appointment in Jerusalem", "Sister's wedding"
+    reason = Column(String, nullable=True)
     destination = Column(String, nullable=False) 
     
     departure_date = Column(DateTime, nullable=False)
     return_date = Column(DateTime, nullable=False)
     
-    # Needs counselor/teacher approval
+    # Needs counselor/teacher/madrich approval
     is_approved = Column(Boolean, default=False) 
+    
+    # e.g., "pending", "approved", "active_leave", "returned", "late"
+    status = Column(String, default="pending")
+    
+    # When the student actually checks back in with the guard/madrich
+    actual_return_time = Column(DateTime, nullable=True)
     
     # Relationships
     student = relationship("Student", back_populates="dorm_leaves")
+
+class BagrutStatus(Base):
+    """Tracks Israeli Matriculation (Bagrut) progress."""
+    __tablename__ = "bagrut_status"
+
+    id = Column(Integer, primary_key=True, index=True)
+    student_id = Column(Integer, ForeignKey("students.id"), nullable=False)
+    subject = Column(String, nullable=False) # e.g., "Math", "English", "Tanakh"
+    units = Column(Integer, nullable=False)  # e.g., 3, 4, or 5 yechidot
+    final_score = Column(Float, nullable=True) # None if exam not taken yet
+    is_completed = Column(Boolean, default=False)
+    
+    # Relationships
+    student = relationship("Student", back_populates="bagrut_records")
+
+class Exam(Base):
+    """Allows teachers to schedule upcoming exams for their classroom."""
+    __tablename__ = "exams"
+
+    id = Column(Integer, primary_key=True, index=True)
+    classroom_id = Column(Integer, ForeignKey("classrooms.id"), nullable=False)
+    subject = Column(String, nullable=False)
+    date_scheduled = Column(DateTime, nullable=False)
+    description = Column(String, nullable=True)
+    
+    # Relationships
+    classroom = relationship("Classroom", back_populates="exams")
