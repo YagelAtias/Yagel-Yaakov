@@ -106,7 +106,7 @@ async def analyze_all_signals(
         
     overall_score = min(fused, 1.0)
 
-    # --- SAFETY OVERRIDE ---
+    # SAFETY OVERRIDE
     # Check for critical markers (e.g., self-harm indications) from the semantic engine.
     # Policy: Prefer false positives to ensure immediate safety.
     try:
@@ -132,7 +132,7 @@ async def analyze_all_signals(
     if acoustic_signal is not None:
         signals["acoustic"] = acoustic_signal
 
-    # --- PHASE 2: DATABASE PERSISTENCE & ENCRYPTION ---
+    # PHASE 2: DATABASE PERSISTENCE & ENCRYPTION
     # 1. Ensure a dummy student exists for UI backward compatibility
     student = db.query(models.Student).filter(models.Student.id == request.student_id).first()
     if not student:
@@ -168,7 +168,6 @@ async def analyze_all_signals(
     )
     db.add(new_log)
     db.commit()
-    # ---------------------------------------------------
 
     return {
         "status": "success",
