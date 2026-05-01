@@ -18,6 +18,26 @@ Inside `backend/app/signals/` you will find the engines that actually do the thi
 * **`text_entropy.py`:** The Rumination Engine. It takes the text and compresses it using an algorithm called zlib. If a student is repeating themselves a lot, the text compresses really well. High compression means high repetition, which we flag as "rumination" or obsessive thoughts.
 * **`clinical_lexicon.py`:** A small helper file that holds base weights for specific distress words.
 
+### The Database (`app/db/`)
+* **`database.py`:** Handles the connection to the SQLite database (which we use for prototyping). It creates the `engine` and the `SessionLocal` factory.
+* **`models.py`:** Contains the SQLAlchemy schemas. 
+    * `Organization` (School/Yeshiva)
+    * `User` (Staff member with roles and passwords)
+    * `Student` 
+    * `Classroom` (Links specific teachers to specific students)
+    * `DistressLog` (Stores the analysis results and the *encrypted* raw text).
+
+### Security & Encryption (`app/security/`)
+* **`encryption.py`:** A strict, military-grade `AES-256-GCM` encryption pipeline. Before any transcript is saved to the database, it passes through here. It uses a secret Master Key to scramble the text.
+* **`auth.py`:** Handles everything related to logging in. It uses `bcrypt` to hash passwords and `PyJWT` to create secure JSON Web Tokens. It also contains the `require_role` gatekeeper to block unauthorized staff.
+
+### API Endpoints (`app/api/`)
+* **`auth.py`:** Contains `/login` and `/register`. Handles unified logins for both Teachers and Students using JWT tokens.
+* **`logs.py`:** The Gatekeeper Endpoint (`/students/{student_id}/logs`). Decrypts raw transcripts in RAM if a teacher is authorized.
+* **`classrooms.py`:** Endpoints for creating classrooms, registering students, and scheduling upcoming exams.
+* **`management.py`:** Handles school operations: submitting grades, Bagrut (matriculation) tracking, and managing Dorm Leave requests (including temporary exits and Shabbat stays).
+* **`dashboard.py`:** The "Mega-Endpoint". Designed specifically for mobile app performance. It packages a teacher's entire day (roster, pending leaves, upcoming exams, and critical distress alerts) into one lightning-fast JSON response to save battery and network bandwidth.
+
 ## Frontend (React + Vite)
 The frontend is built with React and Vite. It lives in the `frontend/` folder.
 Currently, it serves as an analysis lab where you can test the engine. 
@@ -26,5 +46,4 @@ Currently, it serves as an analysis lab where you can test the engine.
 * **`SegmentedEditor.jsx`:** Allows you to break down a conversation sentence by sentence and assign a volume level (whisper, normal, shout) to see how the engine reacts.
 * **`AcousticControl.jsx`:** A slider to simulate the overall decibel level of a conversation.
 * **`AnalysisResult.jsx`:** Displays the final score and a beautiful breakdown of exactly why the engine gave that score.
-
-*This code book will be updated as we build out the database and the teacher dashboards!*
+* **`AudioRecorder.jsx`:** Captures raw, unfiltered audio from the user's microphone for Whisper transcription.
