@@ -46,28 +46,45 @@ def register(user_data: UserCreate, db: Session = Depends(database.get_db)):
 @router.post("/login")
 def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(database.get_db)):
     """
-    Standard OAuth2 Login endpoint.
+    Unified OAuth2 Login endpoint.
     Frontend sends 'username' (which is the email) and 'password'.
-    Returns a JWT Bearer token.
+    It checks if the credentials belong to a Teacher or a Student, and returns the appropriate JWT.
     """
-    user = db.query(models.User).filter(models.User.email == form_data.username).first()
-    if not user or not verify_password(form_data.password, user.hashed_password):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Incorrect email or password",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-        
     access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
-    access_token = create_access_token(
-        data={"sub": user.email, "role": user.role}, 
-        expires_delta=access_token_expires
-    )
     
-    return {
-        "access_token": access_token, 
-        "token_type": "bearer", 
-        "role": user.role, 
-        "name": user.full_name,
-        "organization_id": user.organization_id
-    }
+    # 1. Try to log in as a Teacher/Staff Member
+    user = db.query(models.User).filter(models.User.email == form_data.username).first()
+    if user and verify_password(form_data.password, user.hashed_password):
+        access_token = create_access_token(
+            data={"sub": user.email, "role": user.role, "user_type": "staff"}, 
+            expires_delta=access_token_expires
+        )
+        return {
+            "access_token": access_token, 
+            "token_type": "bearer", 
+            "role": user.role, 
+            "name": user.full_name,
+            "organization_id": user.organization_id
+        }
+        
+    # 2. Try to log in as a Student
+    student = db.query(models.Student).filter(models.Student.email == form_data.username).first()
+    if student and student.hashed_password and verify_password(form_data.password, student.hashed_password):
+        access_token = create_access_token(
+            data={"sub": student.email, "role": "student", "user_type": "student"}, 
+            expires_delta=access_token_expires
+        )
+        return {
+            "access_token": access_token, 
+            "token_type": "bearer", 
+            "role": "student", 
+            "name": f"{student.first_name} {student.last_name}",
+            "organization_id": student.organization_id
+        }
+
+    # 3. Fail
+    raise HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Incorrect email or password",
+        headers={"WWW-Authenticate": "Bearer"},
+    )

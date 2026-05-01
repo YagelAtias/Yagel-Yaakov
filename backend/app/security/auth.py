@@ -36,8 +36,8 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
     encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
     return encoded_jwt
 
-def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(database.get_db)) -> models.User:
-    """Dependency that extracts the JWT token, validates it, and returns the User object."""
+def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(database.get_db)):
+    """Dependency that extracts the JWT token, validates it, and returns the User or Student object."""
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Could not validate credentials",
@@ -46,12 +46,21 @@ def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
         email: str = payload.get("sub")
+        user_type: str = payload.get("user_type", "staff") # Default to staff for older tokens
+        
         if email is None:
             raise credentials_exception
     except jwt.PyJWTError:
         raise credentials_exception
         
-    user = db.query(models.User).filter(models.User.email == email).first()
+    if user_type == "student":
+        user = db.query(models.Student).filter(models.Student.email == email).first()
+        if user:
+            # Attach a temporary role string so the require_role gatekeeper works seamlessly
+            user.role = "student" 
+    else:
+        user = db.query(models.User).filter(models.User.email == email).first()
+        
     if user is None:
         raise credentials_exception
     return user
