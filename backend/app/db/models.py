@@ -45,6 +45,8 @@ class Student(Base):
     organization = relationship("Organization", back_populates="students")
     classroom = relationship("Classroom", back_populates="students")
     distress_logs = relationship("DistressLog", back_populates="student")
+    grades = relationship("Grade", back_populates="student")
+    dorm_leaves = relationship("DormLeave", back_populates="student")
 
 class Classroom(Base):
     """Links Teachers to Students to restrict who can see whose data."""
@@ -79,3 +81,35 @@ class DistressLog(Base):
 
     # Relationships
     student = relationship("Student", back_populates="distress_logs")
+
+class Grade(Base):
+    """Tracks academic performance over time for distress correlation."""
+    __tablename__ = "grades"
+
+    id = Column(Integer, primary_key=True, index=True)
+    student_id = Column(Integer, ForeignKey("students.id"), nullable=False)
+    subject = Column(String, nullable=False)
+    score = Column(Float, nullable=False) # 0-100 scale
+    date_recorded = Column(DateTime, default=datetime.utcnow)
+
+    # Relationships
+    student = relationship("Student", back_populates="grades")
+
+class DormLeave(Base):
+    """Tracks boarding school (Ulpana/Yeshiva) weekend leave and dorm status."""
+    __tablename__ = "dorm_leaves"
+
+    id = Column(Integer, primary_key=True, index=True)
+    student_id = Column(Integer, ForeignKey("students.id"), nullable=False)
+    
+    # e.g., "Home - Jerusalem", "Staying for Shabbat"
+    destination = Column(String, nullable=False) 
+    
+    departure_date = Column(DateTime, nullable=False)
+    return_date = Column(DateTime, nullable=False)
+    
+    # Needs counselor/teacher approval
+    is_approved = Column(Boolean, default=False) 
+    
+    # Relationships
+    student = relationship("Student", back_populates="dorm_leaves")
