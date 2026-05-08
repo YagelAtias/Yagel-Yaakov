@@ -6,6 +6,7 @@ from app.api.logs import router as logs_router
 from app.api.classrooms import router as classrooms_router
 from app.api.management import router as management_router
 from app.api.dashboard import router as dashboard_router
+from app.api.admin import router as admin_router
 from app.db.database import engine
 from app.db import models
 
@@ -38,6 +39,7 @@ app.include_router(logs_router, prefix="/api/v2", tags=["Secure Data Access"])
 app.include_router(classrooms_router, prefix="/api/v2", tags=["School Management"])
 app.include_router(management_router, prefix="/api/v2", tags=["School Management"])
 app.include_router(dashboard_router, prefix="/api/v2", tags=["Mobile App Core"])
+app.include_router(admin_router, prefix="/api/v2/admin", tags=["Admin"])
 
 @app.get("/")
 def read_root():
