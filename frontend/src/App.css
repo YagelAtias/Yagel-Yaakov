@@ -1,212 +1,23 @@
-/* =========================================
-   1. Global Layout & Header
-   ========================================= */
-#root {
-    max-width: 1280px;
-    margin: 0 auto;
-    padding: 2rem;
-    text-align: center;
+/* 
+  Cleared out old default styles. 
+  All global theming and RTL support is now handled in index.css.
+*/
+.dashboard-container {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 20px;
 }
 
-.container {
-    max-width: 960px;
-    margin: 0 auto;
-    font-family: 'Rubik', 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-}
-
-h1 {
-    font-size: 2.5rem;
-    margin-bottom: 0.5rem;
-    background: -webkit-linear-gradient(45deg, #646cff, #9089fc);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-}
-
-.subtitle {
-    color: #888;
-    margin-bottom: 2rem;
-    font-size: 1.1rem;
-}
-
-/* =========================================
-   2. The Input Card
-   ========================================= */
-.input-card {
-    background-color: #1a1a1a;
-    padding: 2rem;
-    border-radius: 16px;
-    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
-    border: 1px solid #333;
-}
-
-.text-input {
-    width: 100%;
-    background-color: #242424;
-    border: 1px solid #444;
-    border-radius: 8px;
-    color: white;
-    padding: 1rem;
-    font-size: 1rem;
-    resize: vertical;
-    transition: border-color 0.3s;
-    font-family: inherit;
-    box-sizing: border-box;
-}
-
-.text-input:focus {
-    outline: none;
-    border-color: #646cff;
-    box-shadow: 0 0 0 4px rgba(100, 108, 255, 0.1);
-}
-
-/* =========================================
-   3. The Analyze Button
-   ========================================= */
-.analyze-btn {
-    margin-top: 1.5rem;
-    width: 100%;
-    padding: 0.8rem;
-    font-size: 1.1rem;
-    font-weight: 600;
-    background-color: #646cff;
-    color: white;
-    border: none;
-    border-radius: 8px;
-    cursor: pointer;
-    transition: all 0.2s;
-}
-
-.analyze-btn:hover:not(:disabled) {
-    background-color: #535bf2;
-    transform: translateY(-2px);
-    box-shadow: 0 4px 12px rgba(83, 91, 242, 0.4);
-}
-
-.analyze-btn:disabled {
-    background-color: #333;
-    color: #666;
-    cursor: not-allowed;
-}
-
-/* =========================================
-   4. NEW Dark Dashboard Results Theme
-   ========================================= */
-
-.results-container {
-    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-    max-width: 800px;
-    margin: 2rem auto 0 auto;
-    color: #f3f4f6;
-    animation: slideUp 0.4s ease-out;
-}
-
-@keyframes slideUp {
-    from { opacity: 0; transform: translateY(20px); }
-    to { opacity: 1; transform: translateY(0); }
-}
-
-/* --- Card Components --- */
-.dark-card {
-    background-color: #1f2937; /* Gray 800 */
-    border: 1px solid #374151; /* Gray 700 */
-    border-radius: 12px;
-    padding: 16px;
-    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.3);
-    text-align: right; /* Ensure Hebrew aligns right */
-}
-
-/* Main Score Card Highlight */
-.main-score-card {
-    background: linear-gradient(145deg, #1f2937, #111827);
-    border: 1px solid #4b5563;
-}
-
-/* Text Styles */
-.info-text-dark {
-    font-size: 0.85rem;
-    color: #9ca3af; /* Gray 400 */
-    line-height: 1.4;
-    margin-top: 4px;
-}
-
-/* Grid Layout for Dashboard */
+/* Mobile responsive grid */
 .dashboard-grid {
-    display: grid;
-    grid-template-columns: 1fr 1fr; /* 2 Columns */
-    gap: 16px;
-    margin-top: 16px;
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 24px;
 }
 
-.full-width {
-    grid-column: 1 / -1;
-}
-
-/* --- Segment/Sentence Cards --- */
-.segment-list {
-    display: flex;
-    flex-direction: column;
-    gap: 12px;
-}
-
-.seg-card {
-    transition: transform 0.2s, box-shadow 0.2s;
-}
-
-.seg-card:hover {
-    transform: translateX(-4px); /* Subtle nudge on hover */
-    background-color: #273549; /* Slightly lighter on hover */
-}
-
-/* --- Interactive Elements (Buttons & Chips) --- */
-.toggle-btn.dark {
-    width: 100%;
-    margin-top: 12px;
-    padding: 10px;
-    background: transparent;
-    color: #60a5fa; /* Blue 400 */
-    border: 1px dashed #4b5563;
-    border-radius: 8px;
-    cursor: pointer;
-    transition: all 0.2s;
-}
-
-.toggle-btn.dark:hover {
-    background: rgba(96, 165, 250, 0.1);
-    border-color: #60a5fa;
-}
-
-/* Topic Chips */
-.chip-dark {
-    display: inline-block;
-    padding: 2px 10px;
-    border-radius: 12px;
-    font-size: 0.75rem;
-    background-color: #374151;
-    color: #e5e7eb;
-    border: 1px solid #4b5563;
-    margin-left: 6px;
-    margin-bottom: 4px;
-}
-
-.chip-dark.critical {
-    background-color: rgba(127, 29, 29, 0.4);
-    border-color: #ef4444;
-    color: #fca5a5;
-}
-
-/* Status Badges (Safe/Warning) */
-.status-badge {
-    padding: 4px 10px;
-    border-radius: 6px;
-    font-size: 0.8rem;
-    font-weight: 600;
-}
-.status-badge.success { background: rgba(34, 197, 94, 0.15); color: #4ade80; border: 1px solid rgba(34, 197, 94, 0.3); }
-.status-badge.warning { background: rgba(234, 179, 8, 0.15); color: #facc15; border: 1px solid rgba(234, 179, 8, 0.3); }
-
-/* --- Responsive Design --- */
-@media (max-width: 700px) {
-    .dashboard-grid {
-        grid-template-columns: 1fr; /* Stack vertically on mobile */
-    }
+/* On desktop, split into columns */
+@media (min-width: 768px) {
+  .dashboard-grid {
+    grid-template-columns: 2fr 1fr;
+  }
 }
