@@ -1,0 +1,73 @@
+.navbar {
+  margin: 20px;
+  background: var(--glass-bg);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1px solid var(--glass-border);
+  border-radius: 30px;
+  padding: 10px 30px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  box-shadow: 0 4px 15px rgba(0,0,0,0.03);
+}
+
+.navbar-brand {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+}
+
+.logo-placeholder {
+  width: 45px;
+  height: 45px;
+  border-radius: 50%;
+  background-color: #fff;
+  border: 2px solid #e0e0e0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 800;
+  font-size: 1.2rem;
+  color: var(--text-main);
+}
+
+.navbar-title h2 {
+  font-weight: 800;
+  font-size: 1.5rem;
+  letter-spacing: 0.5px;
+}
+
+.nav-links {
+  display: flex;
+  gap: 20px;
+  align-items: center;
+}
+
+.nav-link {
+  font-weight: 600;
+  color: var(--text-main);
+  cursor: pointer;
+  padding: 8px 16px;
+  border-radius: 20px;
+  transition: background 0.2s;
+}
+
+.nav-link.active {
+  background: white;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+}
+
+.nav-link:hover:not(.active) {
+  background: rgba(255,255,255,0.4);
+}
+
+.user-profile {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: white;
+  padding: 5px 15px 5px 5px;
+  border-radius: 30px;
+  font-weight: 600;
+}
