@@ -25,6 +25,9 @@ class User(Base):
     full_name = Column(String, nullable=False)
     role = Column(String, default="teacher") # 'counselor', 'teacher', 'admin'
     organization_id = Column(Integer, ForeignKey("organizations.id"))
+    
+    # Key Management: The Organization's DEK wrapped by this User's KEK (derived from password)
+    encrypted_dek = Column(String, nullable=True) 
 
     # Relationships
     organization = relationship("Organization", back_populates="users")
@@ -68,6 +71,7 @@ class Classroom(Base):
     teacher = relationship("User", back_populates="classrooms")
     students = relationship("Student", back_populates="classroom")
     exams = relationship("Exam", back_populates="classroom")
+    schedule_slots = relationship("ScheduleSlot", back_populates="classroom")
 
 class DistressLog(Base):
     """Highly confidential analysis output. Text is ENCRYPTED."""
@@ -157,3 +161,17 @@ class Exam(Base):
     
     # Relationships
     classroom = relationship("Classroom", back_populates="exams")
+
+class ScheduleSlot(Base):
+    """Weekly class schedule for a classroom."""
+    __tablename__ = "schedule_slots"
+
+    id = Column(Integer, primary_key=True, index=True)
+    classroom_id = Column(Integer, ForeignKey("classrooms.id"), nullable=False)
+    day_of_week = Column(Integer, nullable=False)  # 1 = Sunday, 2 = Monday, etc.
+    period = Column(Integer, nullable=False)       # 1st period, 2nd period, etc.
+    subject = Column(String, nullable=False)
+    teacher_name = Column(String, nullable=True)   # The specific teacher for this period
+    
+    # Relationships
+    classroom = relationship("Classroom", back_populates="schedule_slots")

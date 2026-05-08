@@ -26,6 +26,12 @@ class ExamCreate(BaseModel):
     date_scheduled: datetime
     description: Optional[str] = None
 
+class ScheduleSlotCreate(BaseModel):
+    day_of_week: int
+    period: int
+    subject: str
+    teacher_name: Optional[str] = None
+
 # --- Endpoints ---
 @router.post("/classrooms")
 def create_classroom(
@@ -104,3 +110,38 @@ def schedule_exam(
     db.commit()
     db.refresh(new_exam)
     return {"status": "success", "exam_id": new_exam.id, "subject": new_exam.subject}
+
+@router.post("/classrooms/{classroom_id}/schedule")
+def add_schedule_slot(
+    classroom_id: int,
+    slot: ScheduleSlotCreate,
+    db: Session = Depends(database.get_db),
+    current_user: models.User = Depends(require_role(["teacher", "admin"]))
+):
+    """Adds a class schedule slot for a specific classroom."""
+    # Verify teacher actually owns this classroom or is admin
+    classroom = db.query(models.Classroom).filter(models.Classroom.id == classroom_id).first()
+    
+    if not classroom or (current_user.role != "admin" and classroom.teacher_id != current_user.id):
+        raise HTTPException(status_code=403, detail="You are not authorized to edit this classroom's schedule.")
+        
+    new_slot = models.ScheduleSlot(
+        classroom_id=classroom_id,
+        day_of_week=slot.day_of_week,
+        period=slot.period,
+        subject=slot.subject,
+        teacher_name=slot.teacher_name
+    )
+    db.add(new_slot)
+    db.commit()
+    db.refresh(new_slot)
+    return {"status": "success", "slot_id": new_slot.id}
+
+@router.get("/classrooms/{classroom_id}/schedule")
+def get_classroom_schedule(
+    classroom_id: int,
+    db: Session = Depends(database.get_db)
+):
+    """Gets the weekly schedule for a classroom."""
+    slots = db.query(models.ScheduleSlot).filter(models.ScheduleSlot.classroom_id == classroom_id).all()
+    return {"status": "success", "schedule": slots}
