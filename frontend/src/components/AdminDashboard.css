@@ -1,0 +1,121 @@
+.admin-dashboard-wrapper {
+  padding: 30px;
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.admin-2col {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 30px;
+  margin-top: 30px;
+}
+
+@media (max-width: 800px) {
+  .admin-2col {
+    grid-template-columns: 1fr;
+  }
+}
+
+.onboard-form {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  margin-top: 10px;
+}
+
+.onboard-form .form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.onboard-form label {
+  font-weight: 600;
+  color: var(--text-main);
+  font-size: 0.95rem;
+}
+
+.onboard-form input, .onboard-form select {
+  padding: 12px 16px;
+  border-radius: 12px;
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  background-color: rgba(255, 255, 255, 0.6);
+  font-family: inherit;
+  font-size: 1rem;
+  transition: all 0.2s ease;
+}
+
+.onboard-form input:focus, .onboard-form select:focus {
+  outline: none;
+  border-color: var(--col-blue);
+  background-color: #fff;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+}
+
+.onboard-form small {
+  color: var(--text-sub);
+  font-size: 0.8rem;
+}
+
+.btn-submit-staff {
+  margin-top: 10px;
+  padding: 14px;
+  background-color: var(--col-blue);
+  color: #fff;
+  border: none;
+  border-radius: 12px;
+  font-weight: 700;
+  font-size: 1.05rem;
+  cursor: pointer;
+  transition: transform 0.2s, background-color 0.2s;
+}
+
+.btn-submit-staff:hover:not(:disabled) {
+  transform: translateY(-2px);
+  background-color: #5fa5e6;
+}
+
+.btn-submit-staff:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
+.admin-error {
+  color: #d32f2f;
+  background-color: #ffcdd2;
+  padding: 10px;
+  border-radius: 8px;
+  font-size: 0.9rem;
+  text-align: center;
+}
+
+.admin-success {
+  color: #2e7d32;
+  background-color: #c8e6c9;
+  padding: 10px;
+  border-radius: 8px;
+  font-size: 0.9rem;
+  text-align: center;
+}
+
+.staff-card {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.btn-manage-staff {
+  padding: 8px 16px;
+  border-radius: 8px;
+  background-color: rgba(0,0,0,0.05);
+  border: none;
+  font-weight: 600;
+  color: var(--text-main);
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.btn-manage-staff:hover {
+  background-color: rgba(0,0,0,0.1);
+}

@@ -1,18 +1,51 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { secureFetch } from '../api';
 import './TeacherDashboard.css';
 
 export default function StudentDashboard() {
   const [message, setMessage] = useState('');
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(true);
   
-  const handleSendMessage = (e) => {
+  useEffect(() => {
+    async function loadDashboard() {
+      try {
+        const result = await secureFetch('/dashboard/student');
+        setData(result);
+      } catch (err) {
+        console.error(err);
+      } finally {
+        setLoading(false);
+      }
+    }
+    loadDashboard();
+  }, []);
+
+  const handleSendMessage = async (e) => {
     e.preventDefault();
-    alert('הודעתך נשלחה לאיש הצוות בהצלחה! (נותחה ברקע על ידי DistressEngine)');
-    setMessage('');
+    if (!message || !data?.student_id) return;
+    
+    try {
+      await secureFetch('/analyze_all', {
+        method: 'POST',
+        body: JSON.stringify({
+          text: message,
+          student_id: data.student_id,
+          latencies: []
+        })
+      });
+      alert('הודעתך נשלחה לאיש הצוות בהצלחה! (נותחה ברקע על ידי DistressEngine)');
+      setMessage('');
+    } catch (error) {
+      alert('אירעה שגיאה בשליחת ההודעה.');
+      console.error(error);
+    }
   };
 
-  const exams = [
-    { id: 201, subject: "מבחן אמצע במתמטיקה", date: "כ\"ד בחשוון | 4 נובמבר, 11:30" }
-  ];
+  if (loading) return <div style={{ padding: '50px', textAlign: 'center' }}>טוען נתונים...</div>;
+
+  const staff = data?.staff || [];
+  const exams = data?.exams || [];
 
   const todaysSchedule = [
     { id: 1, period: "שיעור 1", time: "08:30 - 09:15", subject: "תלמוד (גמרא)", teacher: "הרב יעקב" },
@@ -42,7 +75,7 @@ export default function StudentDashboard() {
   return (
     <div className="dashboard-wrapper">
       <div className="welcome-header" style={{ textAlign: 'right', marginBottom: '30px' }}>
-        <h1 style={{ color: '#ce93d8', fontSize: '2.8rem', fontWeight: '800', marginBottom: '5px' }}>שלום דניאל! 👋</h1>
+        <h1 style={{ color: '#ce93d8', fontSize: '2.8rem', fontWeight: '800', marginBottom: '5px' }}>שלום {data?.user_name}!</h1>
         <p style={{ fontSize: '1.1rem', color: '#7f8c8d' }}>היום יום שני, י"ז בחשוון | 28 באוקטובר</p>
       </div>
 
@@ -62,9 +95,9 @@ export default function StudentDashboard() {
                 <label style={labelStyle}>שלח אל:</label>
                 <select style={inputStyle}>
                   <option>בחר איש צוות...</option>
-                  <option>הרב יעקב (מחנך כיתה)</option>
-                  <option>אביתר (מדריך פנימייה)</option>
-                  <option>אורי (יועץ בית הספר)</option>
+                  {staff.map(s => (
+                    <option key={s.id} value={s.id}>{s.name} ({s.role})</option>
+                  ))}
                 </select>
               </div>
               <textarea 
@@ -178,16 +211,18 @@ export default function StudentDashboard() {
               <h3>המבחנים שלי</h3>
             </div>
             <div className="panel-content">
+              {exams.length === 0 ? <p>אין מבחנים קרובים.</p> : null}
               {exams.map(e => (
                 <div key={e.id} style={{ 
                   backgroundColor: '#ffffff', 
                   borderRadius: '12px', 
                   padding: '16px', 
                   boxShadow: '0 2px 8px rgba(0,0,0,0.03)',
-                  textAlign: 'center'
+                  textAlign: 'center',
+                  marginBottom: '10px'
                 }}>
                   <div style={{ fontWeight: '800', fontSize: '1.1rem', color: '#6a1b9a' }}>{e.subject}</div>
-                  <div style={{ fontSize: '0.9rem', color: '#7f8c8d', marginTop: '8px' }}>{e.date}</div>
+                  <div style={{ fontSize: '0.9rem', color: '#7f8c8d', marginTop: '8px' }}>{new Date(e.date).toLocaleDateString('he-IL')}</div>
                 </div>
               ))}
             </div>
