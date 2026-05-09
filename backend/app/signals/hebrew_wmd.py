@@ -29,8 +29,8 @@ HE_STOPWORDS = {
 # --- 1. Clinical (Distress) Topics ---
 # Target clusters for distress detection.
 CLINICAL_TOPICS: List[Dict] = [
-    {"id": "sadness", "weight": 0.6,
-     "words": ["עצוב", "עצובה", "דכדוך", "עצבות", "בוכה", "לב שבור", "כואב לי", "מדוכא", "מדוכאת"]},
+    {"id": "sadness", "weight": 0.8,
+     "words": ["עצוב", "עצובה", "דכדוך", "עצבות", "בוכה", "לב שבור", "כואב לי", "מדוכא", "מדוכאת", "דיכאון", "בדיכאון"]},
     {"id": "hopelessness", "weight": 0.9,
      "words": ["ייאוש", "אין תקווה", "חסר סיכוי", "חסרת סיכוי", "למה לנסות", "אבוד", "אבודה", "חסר תוחלת", "נגמר לי", "מיואש", "מיואשת"]},
     {"id": "rumination", "weight": 0.7,
@@ -118,7 +118,8 @@ def _normalize_token(tok: str) -> str:
         "לישון", "שינה", "ישן", "נרדם",  # Protected for Insomnia detection
         "להתאבד", "התאבדות", "אתאבד",  # Critical for safety override
         "לחיות", "חיים",  # Added to prevent stripping 'L' from Lichyot
-        "בסדר"  # Prevent 'B' from being stripped
+        "בסדר",  # Prevent 'B' from being stripped
+        "דיכאון", "בדיכאון" # Prevent B from being stripped from Depression
     }
 
     if tok in PROTECTED_WORDS:

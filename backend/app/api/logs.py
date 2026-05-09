@@ -77,3 +77,25 @@ def get_student_risk_profile(
         "student_name": f"{student.first_name} {student.last_name}",
         "risk_profile": risk_profile
     }
+
+@router.get("/logs/{log_id}/decrypt")
+def decrypt_single_log(
+    log_id: int,
+    db: Session = Depends(database.get_db),
+    current_user: models.User = Depends(require_role(["teacher", "counselor", "admin"]))
+):
+    """
+    On-demand Decryption!
+    Decrypts a single conversation entirely in RAM and returns it over HTTPS.
+    Leaves no trace of the plaintext in the database.
+    """
+    log = db.query(models.DistressLog).filter(models.DistressLog.id == log_id).first()
+    if not log:
+        raise HTTPException(status_code=404, detail="Log not found")
+        
+    # Basic Authorization: Ensure the student belongs to the same org
+    student = db.query(models.Student).filter(models.Student.id == log.student_id).first()
+    if not student or student.organization_id != current_user.organization_id:
+        raise HTTPException(status_code=403, detail="Unauthorized")
+        
+    return {"decrypted_text": decrypt_text(log.encrypted_raw_text) if log.encrypted_raw_text else ""}

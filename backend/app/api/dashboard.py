@@ -53,23 +53,56 @@ def get_teacher_dashboard(
     for student in students:
         risk_profile = risk_engine.calculate_student_risk(student.id)
         # If the student has a critical alert or high global risk, flag them on the dashboard immediately
-        if risk_profile.get("has_recent_critical") or risk_profile.get("global_risk_score", 0) > 0.75:
+        if risk_profile.get("has_recent_critical") or risk_profile.get("global_risk_score", 0) > 0.6:
             students_at_risk.append({
                 "student_id": student.id,
                 "name": f"{student.first_name} {student.last_name}",
                 "risk_profile": risk_profile
             })
             
+    # Organize students and their conversation logs
+    class_map = {c.id: c.name for c in classrooms}
+    students_data = []
+    
+    for student in students:
+        class_name = class_map.get(student.classroom_id, "ללא שיוך")
+        
+        # Get their recent conversations/logs
+        logs = db.query(models.DistressLog).filter(
+            models.DistressLog.student_id == student.id
+        ).order_by(models.DistressLog.timestamp.desc()).limit(5).all()
+        
+        # Calculate their risk profile for the clinical dashboard view
+        risk_profile = risk_engine.calculate_student_risk(student.id)
+        
+        students_data.append({
+            "id": student.id,
+            "name": f"{student.first_name} {student.last_name}",
+            "class_name": class_name,
+            "grade_level": student.grade_level,
+            "risk_profile": risk_profile,
+            "recent_conversations": [
+                {
+                    "id": log.id,
+                    "date": log.timestamp.strftime("%Y-%m-%d %H:%M"),
+                    "has_critical_alert": log.has_critical_alert,
+                    "score": log.overall_score,
+                    "encrypted_text": log.encrypted_raw_text
+                } for log in logs
+            ]
+        })
+            
     # Package and send!
     return {
         "status": "success",
         "user_name": current_user.full_name,
         "classrooms_count": len(classrooms),
-        "students_count": len(students),
+        "students": students_data,
         "pending_dorm_leaves": [
             {
                 "leave_id": leave.id,
                 "student_id": leave.student_id,
+                "student_name": f"{leave.student.first_name} {leave.student.last_name}" if leave.student else "לא ידוע",
                 "leave_type": leave.leave_type,
                 "departure_date": leave.departure_date,
                 "reason": leave.reason
@@ -83,4 +116,37 @@ def get_teacher_dashboard(
             } for exam in upcoming_exams
         ],
         "critical_alerts": students_at_risk
+    }
+
+@router.get("/dashboard/student")
+def get_student_dashboard(
+    db: Session = Depends(database.get_db),
+    current_user: models.Student = Depends(require_role(["student"]))
+):
+    """Fetches real staff members and exams for the student view."""
+    # Fetch school's staff members for the contact dropdown
+    staff = db.query(models.User).filter(models.User.organization_id == current_user.organization_id).all()
+    
+    # Fetch exams for student's classroom
+    exams = []
+    if current_user.classroom_id:
+        exams = db.query(models.Exam).filter(
+            models.Exam.classroom_id == current_user.classroom_id,
+            models.Exam.date_scheduled >= datetime.utcnow()
+        ).all()
+        
+    return {
+        "status": "success",
+        "user_name": current_user.first_name,
+        "student_id": current_user.id,
+        "staff": [
+            {"id": s.id, "name": s.full_name, "role": s.role} for s in staff
+        ],
+        "exams": [
+            {
+                "id": e.id,
+                "subject": e.subject,
+                "date": e.date_scheduled.strftime("%Y-%m-%d %H:%M")
+            } for e in exams
+        ]
     }
