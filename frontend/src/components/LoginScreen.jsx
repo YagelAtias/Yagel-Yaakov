@@ -19,6 +19,7 @@ export default function LoginScreen({ onLogin }) {
       
       // 2. Save the secure JWT token to the browser's local storage
       localStorage.setItem('jwt_token', response.access_token);
+      localStorage.setItem('user_role', response.role);
       
       // 3. Transition to the correct dashboard based on backend response
       onLogin(response.role);
@@ -78,7 +79,10 @@ export default function LoginScreen({ onLogin }) {
             <p style={{ fontSize: '0.8rem', textAlign: 'center', color: '#7f8c8d', margin: '0' }}>כפתורי עקיפה (זמני לפיתוח):</p>
             <button 
               type="button" 
-              onClick={() => onLogin('teacher')} 
+              onClick={() => {
+                localStorage.setItem('user_role', 'teacher');
+                onLogin('teacher');
+              }} 
               className="login-button"
               style={{ padding: '10px', fontSize: '1rem', backgroundColor: '#e0e0e0', color: '#333', boxShadow: 'none' }}
             >
@@ -86,7 +90,10 @@ export default function LoginScreen({ onLogin }) {
             </button>
             <button 
               type="button" 
-              onClick={() => onLogin('student')} 
+              onClick={() => {
+                localStorage.setItem('user_role', 'student');
+                onLogin('student');
+              }} 
               className="login-button" 
               style={{ padding: '10px', fontSize: '1rem', backgroundColor: '#e1bee7', color: '#6a1b9a', boxShadow: 'none' }}
             >
