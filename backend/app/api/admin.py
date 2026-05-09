@@ -6,7 +6,7 @@ import base64
 from ..db import database, models
 from ..security.auth import require_role, get_password_hash
 
-router = APIRouter(prefix="/api/v2/admin", tags=["Admin"])
+router = APIRouter(tags=["Admin"])
 
 class StaffCreate(BaseModel):
     email: str
