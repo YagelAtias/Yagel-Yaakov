@@ -7,6 +7,12 @@ export default function StudentDashboard() {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   
+  const [leaveType, setLeaveType] = useState('יציאה זמנית (מספר שעות)');
+  const [departureDate, setDepartureDate] = useState('');
+  const [returnDate, setReturnDate] = useState('');
+  const [leaveReason, setLeaveReason] = useState('');
+  const [destination, setDestination] = useState('');
+  
   useEffect(() => {
     async function loadDashboard() {
       try {
@@ -39,6 +45,34 @@ export default function StudentDashboard() {
     } catch (error) {
       alert('אירעה שגיאה בשליחת ההודעה.');
       console.error(error);
+    }
+  };
+
+  const handleSubmitLeave = async (e) => {
+    e.preventDefault();
+    if (!departureDate || !returnDate || !destination) {
+      alert("אנא מלא את כל שדות החובה");
+      return;
+    }
+    
+    try {
+      await secureFetch('/leaves/', {
+        method: 'POST',
+        body: JSON.stringify({
+          leave_type: leaveType,
+          reason: leaveReason,
+          destination: destination,
+          departure_date: new Date(departureDate).toISOString(),
+          return_date: new Date(returnDate).toISOString()
+        })
+      });
+      alert('בקשת היציאה נשלחה בהצלחה לאישור הצוות!');
+      setDepartureDate('');
+      setReturnDate('');
+      setLeaveReason('');
+      setDestination('');
+    } catch (err) {
+      alert('שגיאה בשליחת בקשת יציאה: ' + err.message);
     }
   };
 
@@ -137,25 +171,35 @@ export default function StudentDashboard() {
             <h3>בקשת יציאה מהפנימייה</h3>
           </div>
           <div className="panel-content">
-            <form style={{ display: 'flex', flexDirection: 'column', gap: '18px', height: '100%' }}>
+            <form onSubmit={handleSubmitLeave} style={{ display: 'flex', flexDirection: 'column', gap: '18px', height: '100%' }}>
               <div>
                 <label style={labelStyle}>סוג יציאה</label>
-                <select style={inputStyle}>
+                <select style={inputStyle} value={leaveType} onChange={e => setLeaveType(e.target.value)}>
                   <option>יציאה זמנית (מספר שעות)</option>
                   <option>שבת הביתה</option>
                   <option>אירוע משפחתי</option>
                   <option>תור לרופא</option>
                 </select>
               </div>
+              <div style={{ display: 'flex', gap: '10px' }}>
+                <div style={{ flex: 1 }}>
+                  <label style={labelStyle}>תאריך יציאה</label>
+                  <input type="datetime-local" style={inputStyle} value={departureDate} onChange={e => setDepartureDate(e.target.value)} required />
+                </div>
+                <div style={{ flex: 1 }}>
+                  <label style={labelStyle}>תאריך חזרה</label>
+                  <input type="datetime-local" style={inputStyle} value={returnDate} onChange={e => setReturnDate(e.target.value)} required />
+                </div>
+              </div>
               <div>
-                <label style={labelStyle}>תאריכים / שעות</label>
-                <input type="text" placeholder="לדוגמה: היום מ-14:00 עד 18:00" style={inputStyle} />
+                <label style={labelStyle}>יעד (לאן יוצא?)</label>
+                <input type="text" placeholder="לדוגמה: הביתה לירושלים..." style={inputStyle} value={destination} onChange={e => setDestination(e.target.value)} required />
               </div>
               <div>
                 <label style={labelStyle}>הערות / סיבה</label>
-                <input type="text" placeholder="פירוט לבקשה..." style={inputStyle} />
+                <input type="text" placeholder="פירוט לבקשה..." style={inputStyle} value={leaveReason} onChange={e => setLeaveReason(e.target.value)} />
               </div>
-              <button type="button" style={{ 
+              <button type="submit" style={{ 
                 padding: '14px', 
                 borderRadius: '12px', 
                 border: 'none', 

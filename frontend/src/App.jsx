@@ -11,9 +11,12 @@ function App() {
   const [activeTab, setActiveTab] = useState('ראשי');
   const logoutTimer = useRef(null);
 
+  const userPermissions = JSON.parse(localStorage.getItem('user_permissions') || '[]');
+
   const handleLogout = () => {
     localStorage.removeItem('jwt_token');
     localStorage.removeItem('user_role');
+    localStorage.removeItem('user_permissions');
     setUserRole(null);
   };
 
@@ -60,7 +63,7 @@ function App() {
       Content = <AdminDashboard />;
     } else {
       // Default to TeacherDashboard for 'ראשי' or other tabs if not implemented
-      Content = <TeacherDashboard />;
+      Content = <TeacherDashboard permissions={userPermissions} />;
     }
   }
 

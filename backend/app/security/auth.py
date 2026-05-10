@@ -78,3 +78,21 @@ def require_role(required_roles: list[str]):
             )
         return current_user
     return role_checker
+
+def require_permission(permission: str):
+    """
+    Dependency generator for Permission-Based Access Control.
+    Checks if the authenticated user's permissions JSON contains the required permission.
+    """
+    def permission_checker(current_user: models.User = Depends(get_current_user)):
+        if getattr(current_user, "role", None) == "student":
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Students lack permissions")
+        
+        perms = getattr(current_user, "permissions", []) or []
+        if permission not in perms:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"Missing required privilege: {permission}"
+            )
+        return current_user
+    return permission_checker

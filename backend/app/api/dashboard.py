@@ -75,11 +75,35 @@ def get_teacher_dashboard(
         # Calculate their risk profile for the clinical dashboard view
         risk_profile = risk_engine.calculate_student_risk(student.id)
         
+        # Calculate Current Location
+        current_time = datetime.utcnow()
+        active_leave = db.query(models.DormLeave).filter(
+            models.DormLeave.student_id == student.id,
+            models.DormLeave.is_approved == True,
+            models.DormLeave.departure_date <= current_time,
+            models.DormLeave.return_date >= current_time
+        ).first()
+        
+        active_leave_data = None
+        if active_leave:
+            current_location = f"יציאה: {active_leave.destination}"
+            active_leave_data = {
+                "destination": active_leave.destination,
+                "reason": active_leave.reason,
+                "departure_date": active_leave.departure_date,
+                "return_date": active_leave.return_date,
+                "leave_type": active_leave.leave_type
+            }
+        else:
+            current_location = "בפנימייה"
+        
         students_data.append({
             "id": student.id,
             "name": f"{student.first_name} {student.last_name}",
             "class_name": class_name,
             "grade_level": student.grade_level,
+            "current_location": current_location,
+            "active_leave": active_leave_data,
             "risk_profile": risk_profile,
             "recent_conversations": [
                 {
@@ -105,6 +129,8 @@ def get_teacher_dashboard(
                 "student_name": f"{leave.student.first_name} {leave.student.last_name}" if leave.student else "לא ידוע",
                 "leave_type": leave.leave_type,
                 "departure_date": leave.departure_date,
+                "return_date": leave.return_date,
+                "destination": leave.destination,
                 "reason": leave.reason
             } for leave in pending_leaves
         ],

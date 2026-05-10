@@ -64,7 +64,8 @@ def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depend
             "token_type": "bearer", 
             "role": user.role, 
             "name": user.full_name,
-            "organization_id": user.organization_id
+            "organization_id": user.organization_id,
+            "permissions": getattr(user, "permissions", []) or []
         }
         
     # 2. Try to log in as a Student

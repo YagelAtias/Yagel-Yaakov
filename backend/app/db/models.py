@@ -29,6 +29,9 @@ class User(Base):
     # Key Management: The Organization's DEK wrapped by this User's KEK (derived from password)
     encrypted_dek = Column(String, nullable=True) 
 
+    # Privileges: Granular access control array (e.g. ["can_manage_leaves", "can_view_grades"])
+    permissions = Column(JSON, default=list)
+
     # Relationships
     organization = relationship("Organization", back_populates="users")
     classrooms = relationship("Classroom", back_populates="teacher")
