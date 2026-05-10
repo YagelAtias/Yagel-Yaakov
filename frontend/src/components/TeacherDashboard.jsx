@@ -40,7 +40,7 @@ export default function TeacherDashboard({ permissions = [] }) {
           <div className="panel-header" style={{ backgroundColor: 'var(--col-mint)' }}>
             <h3>התלמידים שלי ושיחות (לפי כיתות)</h3>
           </div>
-          <div className="panel-content" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
+          <div className="panel-content" style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '15px' }}>
             {students.length === 0 ? <p>אין תלמידים משויכים אליך.</p> : null}
             {students.map(s => (
               <div 
@@ -58,17 +58,19 @@ export default function TeacherDashboard({ permissions = [] }) {
                         <span style={{
                           backgroundColor: s.current_location === "בפנימייה" ? '#e8f5e9' : '#fff3e0',
                           color: s.current_location === "בפנימייה" ? '#2e7d32' : '#e65100',
-                          padding: '4px 8px',
+                          padding: '4px 12px',
                           borderRadius: '12px',
-                          fontSize: '0.75rem',
-                          fontWeight: 'bold'
+                          fontSize: '0.85rem',
+                          fontWeight: 'bold',
+                          display: 'flex',
+                          alignItems: 'center'
                         }}>
-                          {s.current_location === "בפנימייה" ? "📍 בפנימייה" : `🏠 ${s.current_location}`}
+                          {s.current_location === "בפנימייה" ? "בפנימייה" : "לא נמצא"}
                         </span>
                         {s.risk_profile && (
-                          <div style={{ display: 'flex', gap: '15px', fontSize: '0.75rem', backgroundColor: 'rgba(0,0,0,0.03)', padding: '6px 12px', borderRadius: '12px' }}>
-                            <span title="Baseline median distress score">חציון מצוקה: {(s.risk_profile.blended_baseline * 10).toFixed(1)}</span>
-                            <span title="Academic trend multiplier">מגמה לימודית: {(s.risk_profile.multiplier_applied).toFixed(2)}x</span>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '15px', fontSize: '0.8rem', backgroundColor: 'rgba(0,0,0,0.03)', padding: '6px 12px', borderRadius: '12px' }}>
+                            <span title="Baseline median distress score">חציון: {(s.risk_profile.blended_baseline * 10).toFixed(1)}</span>
+                            <span title="Academic trend multiplier">לימודית: {(s.risk_profile.multiplier_applied).toFixed(2)}x</span>
                             <strong style={{ color: s.risk_profile.global_risk_score > 0.6 ? '#d32f2f' : '#2e7d32' }}>
                               {s.risk_profile.global_risk_score > 0.6 && "דורש התערבות - "}סיכון כולל: {(s.risk_profile.global_risk_score * 10).toFixed(1)}/10
                             </strong>
@@ -76,7 +78,7 @@ export default function TeacherDashboard({ permissions = [] }) {
                         )}
                       </div>
                     </div>
-                    <div style={{ fontSize: '0.85rem', color: 'var(--text-sub)', marginTop: '4px' }}>{s.class_name}</div>
+                    <div style={{ fontSize: '0.85rem', color: 'var(--text-sub)' }}>{s.class_name}</div>
                   </div>
                 </div>
                 
@@ -84,11 +86,38 @@ export default function TeacherDashboard({ permissions = [] }) {
                   <div style={{ width: '100%', marginTop: '10px', padding: '15px', backgroundColor: 'rgba(255,255,255,0.7)', borderRadius: '12px', boxShadow: 'inset 0 2px 4px rgba(0,0,0,0.02)' }}>
                     
                     {s.active_leave && (
-                      <div style={{ marginBottom: '20px', padding: '12px', backgroundColor: '#fff3e0', borderRadius: '8px', borderRight: '4px solid #ff9800' }}>
-                        <div style={{ fontWeight: 'bold', color: '#e65100', marginBottom: '5px' }}>פרטי חופשה פעילה:</div>
-                        <div style={{ fontSize: '0.85rem', marginBottom: '2px' }}><strong>יעד:</strong> {s.active_leave.destination}</div>
-                        <div style={{ fontSize: '0.85rem', marginBottom: '2px' }}><strong>סיבה:</strong> {s.active_leave.reason || "לא צוין"}</div>
-                        <div style={{ fontSize: '0.85rem' }}><strong>חזרה משוערת:</strong> {new Date(s.active_leave.return_date).toLocaleString('he-IL')}</div>
+                      <div style={{ marginBottom: '20px', padding: '12px', backgroundColor: '#fff3e0', borderRadius: '8px', borderRight: '4px solid #ff9800', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                        <div>
+                          <div style={{ fontWeight: 'bold', color: '#e65100', marginBottom: '5px' }}>פרטי חופשה פעילה:</div>
+                          <div style={{ fontSize: '0.85rem', marginBottom: '2px' }}><strong>יעד:</strong> {s.active_leave.destination}</div>
+                          <div style={{ fontSize: '0.85rem', marginBottom: '2px' }}><strong>סיבה:</strong> {s.active_leave.reason || "לא צוין"}</div>
+                          <div style={{ fontSize: '0.85rem' }}><strong>חזרה משוערת:</strong> {new Date(s.active_leave.return_date).toLocaleString('he-IL')}</div>
+                        </div>
+                        {permissions.includes("can_manage_leaves") && (
+                          <button 
+                            onClick={async (e) => {
+                              e.stopPropagation();
+                              try {
+                                await secureFetch(`/leaves/${s.active_leave.leave_id}/status`, {
+                                  method: 'PUT',
+                                  body: JSON.stringify({ status: "returned", is_approved: true })
+                                });
+                                alert('סטטוס התלמיד עודכן. הוא מסומן כעת כ"נמצא בפנימייה"!');
+                                // Optimistically update UI
+                                const updatedStudents = [...data.students];
+                                const st = updatedStudents.find(st => st.id === s.id);
+                                st.active_leave = null;
+                                st.current_location = "בפנימייה";
+                                setData({...data, students: updatedStudents});
+                              } catch (err) {
+                                alert("שגיאה בעדכון הסטטוס: " + err.message);
+                              }
+                            }}
+                            style={{ padding: '8px 12px', fontSize: '0.8rem', backgroundColor: '#ffb74d', color: '#fff', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold' }}
+                          >
+                            חזר לפנימייה ↩
+                          </button>
+                        )}
                       </div>
                     )}
                     

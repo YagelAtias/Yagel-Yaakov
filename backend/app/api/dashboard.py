@@ -80,14 +80,16 @@ def get_teacher_dashboard(
         active_leave = db.query(models.DormLeave).filter(
             models.DormLeave.student_id == student.id,
             models.DormLeave.is_approved == True,
+            models.DormLeave.status != "returned",
             models.DormLeave.departure_date <= current_time,
             models.DormLeave.return_date >= current_time
         ).first()
         
         active_leave_data = None
         if active_leave:
-            current_location = f"יציאה: {active_leave.destination}"
+            current_location = "לא נמצא"
             active_leave_data = {
+                "leave_id": active_leave.id,
                 "destination": active_leave.destination,
                 "reason": active_leave.reason,
                 "departure_date": active_leave.departure_date,
