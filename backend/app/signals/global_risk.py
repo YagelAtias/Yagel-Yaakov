@@ -24,7 +24,18 @@ class GlobalRiskEngine:
         ).order_by(models.Grade.date_recorded.desc()).limit(10).all()
         
         if not logs:
-            return {"global_score": 0.0, "status": "insufficient_data"}
+            return {
+                "global_risk_score": 0.0,
+                "baseline_median": 0.0,
+                "baseline_average": 0.0,
+                "blended_baseline": 0.0,
+                "grade_trend": "stable",
+                "multiplier_applied": 1.0,
+                "has_recent_critical": False,
+                "logs_analyzed": 0,
+                "grades_analyzed": len(grades),
+                "status": "insufficient_data"
+            }
             
         # BASELINE CALCULATION
         # As requested, we fuse BOTH the Median and the Average.
