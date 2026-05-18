@@ -7,6 +7,64 @@ export default function TeacherDashboard({ permissions = [] }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [expandedStudentId, setExpandedStudentId] = useState(null);
+  const [recordingStudentId, setRecordingStudentId] = useState(null);
+  const [mediaRecorder, setMediaRecorder] = useState(null);
+
+  const renderFormattedText = (text) => {
+    if (!text) return 'הודעה ריקה';
+    const parts = text.split(/(\*\*.*?\*\*|\*.*?\*)/g);
+    return parts.map((part, index) => {
+      if (part.startsWith('**') && part.endsWith('**')) {
+        return <strong key={index} style={{ color: '#d32f2f' }}>{part.slice(2, -2)}</strong>;
+      }
+      if (part.startsWith('*') && part.endsWith('*')) {
+        return <span key={index} style={{ opacity: 0.6, fontStyle: 'italic' }}>{part.slice(1, -1)}</span>;
+      }
+      return <span key={index}>{part}</span>;
+    });
+  };
+
+  const startTeacherRecording = async (studentId) => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const recorder = new MediaRecorder(stream);
+      const chunks = [];
+      recorder.ondataavailable = (e) => {
+        if (e.data.size > 0) chunks.push(e.data);
+      };
+      recorder.onstop = async () => {
+        const audioBlob = new Blob(chunks, { type: 'audio/webm' });
+        const formData = new FormData();
+        formData.append('file', audioBlob, 'audio.webm');
+        formData.append('student_id', studentId);
+        
+        try {
+          await secureFetch('/analyze_audio', {
+            method: 'POST',
+            body: formData
+          });
+          alert('השיחה תומללה, נותחה, ונשמרה בהצלחה!');
+          const result = await secureFetch('/dashboard/teacher');
+          setData(result);
+        } catch(e) {
+          alert('שגיאה בשמירת התמלול: ' + e.message);
+        }
+      };
+      recorder.start();
+      setMediaRecorder(recorder);
+      setRecordingStudentId(studentId);
+    } catch(err) {
+      alert("שגיאה בגישה למיקרופון: " + err.message);
+    }
+  };
+
+  const stopTeacherRecording = () => {
+    if (mediaRecorder) {
+      mediaRecorder.stop();
+      mediaRecorder.stream.getTracks().forEach(track => track.stop());
+      setRecordingStudentId(null);
+    }
+  };
 
   useEffect(() => {
     async function loadDashboard() {
@@ -121,7 +179,27 @@ export default function TeacherDashboard({ permissions = [] }) {
                       </div>
                     )}
                     
-                    <div style={{ fontSize: '0.85rem', fontWeight: 'bold', marginBottom: '10px', color: '#455a64' }}>היסטוריית שיחות אחרונות:</div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+                      <div style={{ fontSize: '0.85rem', fontWeight: 'bold', color: '#455a64' }}>היסטוריית שיחות אחרונות:</div>
+                      <button 
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          recordingStudentId === s.id ? stopTeacherRecording() : startTeacherRecording(s.id);
+                        }}
+                        style={{
+                          padding: '6px 12px',
+                          fontSize: '0.75rem',
+                          borderRadius: '8px',
+                          border: 'none',
+                          cursor: 'pointer',
+                          fontWeight: 'bold',
+                          backgroundColor: recordingStudentId === s.id ? '#ffcdd2' : '#e0f7fa',
+                          color: recordingStudentId === s.id ? '#c62828' : '#00838f'
+                        }}
+                      >
+                        {recordingStudentId === s.id ? "⏹️ סיים תמלול שיחה ליומן" : "🎙️ תמלל שיחה ליומן"}
+                      </button>
+                    </div>
                     {s.recent_conversations && s.recent_conversations.length > 0 ? (
                     s.recent_conversations.map(conv => (
                       <div key={conv.id} style={{ display: 'flex', flexDirection: 'column', fontSize: '0.8rem', padding: '8px 0', borderBottom: '1px solid rgba(0,0,0,0.05)' }}>
@@ -156,7 +234,7 @@ export default function TeacherDashboard({ permissions = [] }) {
                         {conv.isDecrypted && (
                           <div style={{ backgroundColor: '#e0f2f1', padding: '8px', borderRadius: '4px', borderLeft: '3px solid #009688', marginTop: '4px' }}>
                             <span style={{ fontWeight: 'normal', color: '#333', fontFamily: 'inherit', whiteSpace: 'pre-wrap' }}>
-                              {conv.decryptedText || 'הודעה ריקה'}
+                              {renderFormattedText(conv.decryptedText)}
                             </span>
                           </div>
                         )}

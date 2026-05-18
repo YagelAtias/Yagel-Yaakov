@@ -153,7 +153,21 @@ async def analyze_all_signals(
         db.commit()
 
     # 2. Extract raw text for encryption
-    raw_text = full_text if segments else req.get("text", "")
+    if segments:
+        formatted_text_parts = []
+        for seg in segments:
+            for w in seg.get("words", []):
+                word = w.get("word", "")
+                intensity = w.get("intensity", "normal")
+                if intensity == "shout":
+                    formatted_text_parts.append(f"**{word}**")
+                elif intensity == "whisper":
+                    formatted_text_parts.append(f"*{word}*")
+                else:
+                    formatted_text_parts.append(word)
+        raw_text = " ".join(formatted_text_parts)
+    else:
+        raw_text = req.get("text", "")
     
     # 3. MILITARY-GRADE ENCRYPTION: Encrypt the text before it touches the hard drive
     encrypted_text = encrypt_text(raw_text)

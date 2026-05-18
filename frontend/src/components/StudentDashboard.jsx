@@ -6,6 +6,8 @@ export default function StudentDashboard() {
   const [message, setMessage] = useState('');
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [isRecording, setIsRecording] = useState(false);
+  const [mediaRecorder, setMediaRecorder] = useState(null);
   
   const [leaveType, setLeaveType] = useState('יציאה זמנית (מספר שעות)');
   const [departureDate, setDepartureDate] = useState('');
@@ -45,6 +47,46 @@ export default function StudentDashboard() {
     } catch (error) {
       alert('אירעה שגיאה בשליחת ההודעה.');
       console.error(error);
+    }
+  };
+
+  const startRecording = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const recorder = new MediaRecorder(stream);
+      const chunks = [];
+      recorder.ondataavailable = (e) => {
+        if (e.data.size > 0) chunks.push(e.data);
+      };
+      recorder.onstop = async () => {
+        const audioBlob = new Blob(chunks, { type: 'audio/webm' });
+        const formData = new FormData();
+        formData.append('file', audioBlob, 'audio.webm');
+        formData.append('student_id', data.student_id);
+        
+        try {
+          await secureFetch('/analyze_audio', {
+            method: 'POST',
+            body: formData
+          });
+          alert('ההודעה הקולית נשלחה ונותחה בהצלחה! תודה ששיתפת.');
+        } catch(e) {
+          alert('שגיאה בשליחת ההודעה הקולית: ' + e.message);
+        }
+      };
+      recorder.start();
+      setMediaRecorder(recorder);
+      setIsRecording(true);
+    } catch(err) {
+      alert("שגיאה בגישה למיקרופון: " + err.message);
+    }
+  };
+
+  const stopRecording = () => {
+    if (mediaRecorder) {
+      mediaRecorder.stop();
+      mediaRecorder.stream.getTracks().forEach(track => track.stop());
+      setIsRecording(false);
     }
   };
 
@@ -147,20 +189,35 @@ export default function StudentDashboard() {
                 onChange={(e) => setMessage(e.target.value)}
                 required
               />
-              <button type="submit" style={{ 
-                padding: '14px', 
-                borderRadius: '12px', 
-                border: 'none', 
-                fontWeight: '800', 
-                fontSize: '1rem', 
-                width: '100%', 
-                cursor: 'pointer', 
-                backgroundColor: '#b2dfdb', 
-                color: '#00695c',
-                marginTop: 'auto'
-              }}>
-                שלח הודעה
-              </button>
+              <div style={{ display: 'flex', gap: '10px', marginTop: 'auto' }}>
+                <button type="button" onClick={isRecording ? stopRecording : startRecording} style={{ 
+                  padding: '14px', 
+                  borderRadius: '12px', 
+                  border: 'none', 
+                  fontWeight: '800', 
+                  fontSize: '1rem', 
+                  cursor: 'pointer', 
+                  backgroundColor: isRecording ? '#ffcdd2' : '#e0f7fa', 
+                  color: isRecording ? '#c62828' : '#00838f',
+                  flex: 1
+                }}>
+                  {isRecording ? "⏹️ סיים ושלח הודעה קולית" : "🎙️ שלח הודעה קולית"}
+                </button>
+                <button type="submit" style={{ 
+                  padding: '14px', 
+                  borderRadius: '12px', 
+                  border: 'none', 
+                  fontWeight: '800', 
+                  fontSize: '1rem', 
+                  width: '100%', 
+                  cursor: 'pointer', 
+                  backgroundColor: '#b2dfdb', 
+                  color: '#00695c',
+                  flex: 1
+                }}>
+                  שלח טקסט
+                </button>
+              </div>
             </form>
           </div>
         </div>
