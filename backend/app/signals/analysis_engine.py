@@ -9,6 +9,7 @@ from app.signals.typing_latency import TypingLatencySignal
 # Database imports
 from app.db import database, models
 from app.security.encryption import encrypt_text
+from app.services.push_service import PushNotificationService
 
 router = APIRouter()
 
@@ -182,6 +183,17 @@ async def analyze_all_signals(
     )
     db.add(new_log)
     db.commit()
+
+    # 5. PUSH NOTIFICATIONS: Alert staff if distress is high
+    if has_critical or overall_score >= 0.8:
+        student_name = f"{student.first_name} {student.last_name}"
+        alert_reason = "התראת מצוקה קריטית" if has_critical else "ציון מצוקה גבוה זוהה"
+        PushNotificationService.send_to_staff_for_student(
+            student_id=request.student_id,
+            title=f"🚨 התראת DistressEngine: {student_name}",
+            body=f"{alert_reason}. המערכת זיהתה רמת מצוקה של {int(overall_score * 10)}/10. אנא בדוק את יומן השיחות באופן מיידי.",
+            db_session=db
+        )
 
     return {
         "status": "success",
