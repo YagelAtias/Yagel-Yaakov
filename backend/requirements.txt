@@ -7,8 +7,13 @@ passlib[bcrypt]
 python-multipart
 pyjwt
 cryptography
+bcrypt
+python-dotenv
 numpy
 scipy
 librosa
+gensim
+faster-whisper
+imageio-ffmpeg
 psycopg2-binary
 alembic
