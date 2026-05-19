@@ -28,9 +28,9 @@ class Settings(BaseSettings):
     # e.g., sqlite:///C:/.../distress_engine.db
     @staticmethod
     def _default_sqlite_url() -> str:
-        # backend/app/core/settings.py -> up 4 levels to project root
+        # backend/app/core/settings.py -> up 3 levels to backend root
         p = Path(__file__).resolve()
-        for _ in range(4):
+        for _ in range(3):
             p = p.parent
         db_path = p / "distress_engine.db"
         return f"sqlite:///{db_path}"
