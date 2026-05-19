@@ -12,14 +12,34 @@ export default function AdminDashboard() {
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
 
-  // Staff and course state
   const [staffMembers, setStaffMembers] = useState([]);
+  const [classrooms, setClassrooms] = useState([]);
   const [courses, setCourses] = useState([]);
-  const [courseName, setCourseName] = useState('');
-  const [selectedTeacherId, setSelectedTeacherId] = useState('');
-  const [editingCourse, setEditingCourse] = useState(null);
-  const [courseMessage, setCourseMessage] = useState('');
-  const [courseError, setCourseError] = useState('');
+  
+  const [classType, setClassType] = useState('classroom');
+  const [className, setClassName] = useState('');
+  const [classTeacherId, setClassTeacherId] = useState('');
+  const [classMessage, setClassMessage] = useState('');
+  const [classError, setClassError] = useState('');
+
+  const loadData = async () => {
+    try {
+      const staffRes = await secureFetch('/admin/staff');
+      if (staffRes.staff) setStaffMembers(staffRes.staff);
+      
+      const classRes = await secureFetch('/admin/classes');
+      if (classRes.status === 'success') {
+        setClassrooms(classRes.classrooms || []);
+        setCourses(classRes.courses || []);
+      }
+    } catch (err) {
+      console.error("Failed to load admin data:", err);
+    }
+  };
+
+  useEffect(() => {
+    loadData();
+  }, []);
 
   // Student assignment modal
   const [showStudentModal, setShowStudentModal] = useState(false);
@@ -27,30 +47,6 @@ export default function AdminDashboard() {
   const [allStudents, setAllStudents] = useState([]);
   const [courseStudents, setCourseStudents] = useState([]);
   const [selectedStudentIds, setSelectedStudentIds] = useState([]);
-
-  useEffect(() => {
-    loadStaff();
-    loadCourses();
-    loadAllStudents();
-  }, []);
-
-  const loadStaff = async () => {
-    try {
-      const result = await secureFetch('/admin/staff');
-      setStaffMembers(result.staff || []);
-    } catch (err) {
-      console.error('Failed to load staff:', err);
-    }
-  };
-
-  const loadCourses = async () => {
-    try {
-      const result = await secureFetch('/courses');
-      setCourses(result.courses || []);
-    } catch (err) {
-      console.error('Failed to load courses:', err);
-    }
-  };
 
   const loadAllStudents = async () => {
     try {
@@ -86,7 +82,7 @@ export default function AdminDashboard() {
       setEmail('');
       setFullName('');
       setTemporaryPassword('');
-      loadStaff(); // Refresh staff list
+      loadData();
     } catch (err) {
       setError(err.message || 'אירעה שגיאה ביצירת החשבון');
     } finally {
@@ -94,72 +90,11 @@ export default function AdminDashboard() {
     }
   };
 
-  const handleCourseSubmit = async (e) => {
-    e.preventDefault();
-    setCourseError('');
-    setCourseMessage('');
-
-    if (!courseName.trim() || !selectedTeacherId) {
-      setCourseError('נא למלא את כל השדות');
-      return;
-    }
-
-    try {
-      if (editingCourse) {
-        await secureFetch(`/courses/${editingCourse.id}`, {
-          method: 'PUT',
-          body: JSON.stringify({
-            name: courseName,
-            teacher_id: parseInt(selectedTeacherId)
-          })
-        });
-        setCourseMessage('הכיתה עודכנה בהצלחה!');
-      } else {
-        await secureFetch('/courses', {
-          method: 'POST',
-          body: JSON.stringify({
-            name: courseName,
-            teacher_id: parseInt(selectedTeacherId)
-          })
-        });
-        setCourseMessage('הכיתה נוצרה בהצלחה!');
-      }
-
-      setCourseName('');
-      setSelectedTeacherId('');
-      setEditingCourse(null);
-      loadCourses();
-    } catch (err) {
-      setCourseError(err.message || 'אירעה שגיאה');
-    }
-  };
-
-  const handleDeleteCourse = async (courseId) => {
-    if (!confirm('האם אתה בטוח שברצונך למחוק את הכיתה?')) {
-      return;
-    }
-    try {
-      await secureFetch(`/courses/${courseId}`, {
-        method: 'DELETE'
-      });
-      loadCourses();
-      setCourseMessage('הכיתה נמחקה בהצלחה!');
-    } catch (err) {
-      setCourseError('שגיאה במחיקת הכיתה: ' + err.message);
-    }
-  };
-
-  const startEditCourse = (course) => {
-    setEditingCourse(course);
-    setCourseName(course.name);
-    setSelectedTeacherId(course.teacher_id || '');
-  };
-
   const openStudentAssignmentModal = async (course) => {
     setSelectedCourse(course);
     setShowStudentModal(true);
+    loadAllStudents();
 
-    // Load current students in this course
     try {
       const result = await secureFetch(`/courses/${course.id}/students`);
       setCourseStudents(result.students || []);
@@ -200,7 +135,6 @@ export default function AdminDashboard() {
       </div>
 
       <div className="admin-2col">
-        {/* Onboarding Form */}
         <div className="glass-panel admin-form-panel">
           <div className="panel-header" style={{ backgroundColor: 'var(--col-blue)' }}>
             <h3>הוספת איש צוות חדש (הצפנת קצה-לקצה)</h3>
@@ -239,42 +173,60 @@ export default function AdminDashboard() {
           </div>
         </div>
 
-        {/* Staff List */}
         <div className="glass-panel staff-list-panel">
           <div className="panel-header" style={{ backgroundColor: 'var(--col-purple)' }}>
             <h3>צוות חינוכי ({staffMembers.length})</h3>
           </div>
           <div className="panel-content">
-            {staffMembers.length === 0 ? (
-              <p>אין חברי צוות. השתמש בטופס כדי להוסיף איש צוות.</p>
-            ) : (
-              staffMembers.map(s => (
-                <div key={s.id} className="pill-card staff-card">
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
-                    <div className="avatar" style={{ backgroundColor: s.role === 'admin' ? '#e1bee7' : s.role === 'counselor' ? '#b2dfdb' : '#ffcc80' }}>
-                      {s.full_name.charAt(0)}
-                    </div>
-                    <div>
-                      <div style={{ fontWeight: '600' }}>{s.full_name}</div>
-                      <div style={{ fontSize: '0.85rem', color: 'var(--text-sub)' }}>{s.role}</div>
-                      <div style={{ fontSize: '0.75rem', color: 'var(--text-sub)' }}>{s.email}</div>
-                    </div>
+            {staffMembers.map(s => (
+              <div key={s.id} className="pill-card staff-card">
+                <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
+                  <div className="avatar" style={{ backgroundColor: '#e1bee7' }}>{s.full_name.charAt(0)}</div>
+                  <div>
+                    <div style={{ fontWeight: '600' }}>{s.full_name}</div>
+                    <div style={{ fontSize: '0.85rem', color: 'var(--text-sub)' }}>{s.role} - {s.email}</div>
                   </div>
                 </div>
-              ))
-            )}
+              </div>
+            ))}
           </div>
         </div>
       </div>
 
       <div className="admin-2col" style={{ marginTop: '20px' }}>
-        {/* Course Creation Form */}
         <div className="glass-panel admin-form-panel">
           <div className="panel-header" style={{ backgroundColor: 'var(--col-mint)' }}>
-            <h3>{editingCourse ? 'עריכת כיתה מקצועית' : 'הוספת כיתה מקצועית חדשה'}</h3>
+            <h3>הוספת כיתת אם / קבוצת לימוד</h3>
           </div>
           <div className="panel-content">
-            <form onSubmit={handleCourseSubmit} className="onboard-form">
+            <form onSubmit={async (e) => {
+              e.preventDefault();
+              setClassError('');
+              setClassMessage('');
+              try {
+                const res = await secureFetch('/admin/classes', {
+                  method: 'POST',
+                  body: JSON.stringify({
+                    class_type: classType,
+                    name: className,
+                    teacher_id: classTeacherId ? parseInt(classTeacherId) : null
+                  })
+                });
+                if (res.detail) throw new Error(res.detail);
+                setClassMessage(res.message);
+                setClassName('');
+                loadData();
+              } catch (err) {
+                setClassError(err.message || 'שגיאה ביצירת הכיתה');
+              }
+            }} className="onboard-form">
+              <div className="form-group">
+                <label>סוג כיתה</label>
+                <select value={classType} onChange={e => setClassType(e.target.value)}>
+                  <option value="classroom">כיתת אם (Homeroom)</option>
+                  <option value="course">קבוצת לימוד (Course)</option>
+                </select>
+              </div>
               <div className="form-group">
                 <label>שם הכיתה / קבוצה</label>
                 <input

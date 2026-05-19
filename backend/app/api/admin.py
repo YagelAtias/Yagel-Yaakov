@@ -93,3 +93,98 @@ def get_all_staff(
             for s in staff
         ]
     }
+
+class ClassCreate(BaseModel):
+    class_type: str # "classroom" or "course"
+    name: str
+    teacher_id: int | None = None
+
+@router.post("/classes")
+def create_class(
+    class_data: ClassCreate,
+    db: Session = Depends(database.get_db),
+    current_admin: models.User = Depends(require_role(["admin"]))
+):
+    if class_data.class_type == "classroom":
+        new_class = models.Classroom(
+            name=class_data.name,
+            organization_id=current_admin.organization_id,
+            teacher_id=class_data.teacher_id
+        )
+    elif class_data.class_type == "course":
+        new_class = models.Course(
+            name=class_data.name,
+            organization_id=current_admin.organization_id,
+            teacher_id=class_data.teacher_id
+        )
+    else:
+        raise HTTPException(status_code=400, detail="Invalid class type")
+        
+    db.add(new_class)
+    db.commit()
+    db.refresh(new_class)
+    
+    return {"status": "success", "message": f"Successfully created {class_data.class_type} '{new_class.name}'", "id": new_class.id}
+
+@router.get("/classes")
+def get_all_classes(
+    db: Session = Depends(database.get_db),
+    current_admin: models.User = Depends(require_role(["admin"]))
+):
+    classrooms = db.query(models.Classroom).filter(models.Classroom.organization_id == current_admin.organization_id).all()
+    courses = db.query(models.Course).filter(models.Course.organization_id == current_admin.organization_id).all()
+    
+    return {
+        "status": "success",
+        "classrooms": [{"id": c.id, "name": c.name, "teacher_id": c.teacher_id, "teacher_name": c.teacher.full_name if c.teacher else None} for c in classrooms],
+        "courses": [{"id": c.id, "name": c.name, "teacher_id": c.teacher_id, "teacher_name": c.teacher.full_name if c.teacher else None} for c in courses]
+    }
+
+class ClassUpdate(BaseModel):
+    name: str
+    teacher_id: int | None = None
+
+@router.put("/classes/{class_type}/{class_id}")
+def update_class(
+    class_type: str,
+    class_id: int,
+    class_data: ClassUpdate,
+    db: Session = Depends(database.get_db),
+    current_admin: models.User = Depends(require_role(["admin"]))
+):
+    if class_type == "classroom":
+        target = db.query(models.Classroom).filter(models.Classroom.id == class_id, models.Classroom.organization_id == current_admin.organization_id).first()
+    elif class_type == "course":
+        target = db.query(models.Course).filter(models.Course.id == class_id, models.Course.organization_id == current_admin.organization_id).first()
+    else:
+        raise HTTPException(status_code=400, detail="Invalid class type")
+        
+    if not target:
+        raise HTTPException(status_code=404, detail="Class not found")
+        
+    target.name = class_data.name
+    target.teacher_id = class_data.teacher_id
+    db.commit()
+    db.refresh(target)
+    return {"status": "success", "message": "Updated successfully"}
+
+@router.delete("/classes/{class_type}/{class_id}")
+def delete_class(
+    class_type: str,
+    class_id: int,
+    db: Session = Depends(database.get_db),
+    current_admin: models.User = Depends(require_role(["admin"]))
+):
+    if class_type == "classroom":
+        target = db.query(models.Classroom).filter(models.Classroom.id == class_id, models.Classroom.organization_id == current_admin.organization_id).first()
+    elif class_type == "course":
+        target = db.query(models.Course).filter(models.Course.id == class_id, models.Course.organization_id == current_admin.organization_id).first()
+    else:
+        raise HTTPException(status_code=400, detail="Invalid class type")
+        
+    if not target:
+        raise HTTPException(status_code=404, detail="Class not found")
+        
+    db.delete(target)
+    db.commit()
+    return {"status": "success", "message": "Deleted successfully"}
