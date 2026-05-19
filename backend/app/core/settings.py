@@ -8,14 +8,17 @@ from pydantic import BaseSettings
 
 
 class Settings(BaseSettings):
-    """Centralized application settings.
+    """One place for all app settings.
 
-    Configure via environment variables or a .env file at the project root.
-    Key variables:
-      - DATABASE_URL: SQLAlchemy URL for the database
-      - JWT_SECRET_KEY: Secret for signing JWTs (required in non-dev)
-      - ACCESS_TOKEN_EXPIRE_MINUTES: JWT access token lifetime
-      - CORS_ORIGINS: Comma-separated list of allowed origins
+    How it works:
+    - Reads from environment variables or a .env file in the project root.
+    - Keeps DB URL, JWT secret, token lifetime, and CORS in one spot so it's easy to change per environment.
+    - Use ENV to switch between development/testing/production.
+    Key vars you’ll likely touch:
+      - DATABASE_URL: connection string for the DB
+      - JWT_SECRET_KEY: used to sign access tokens (don’t use the default in prod)
+      - ACCESS_TOKEN_EXPIRE_MINUTES: how long access tokens live
+      - CORS_ORIGINS: list of allowed frontends (comma-separated in env)
       - ENV: one of [development, testing, production]
     """
 

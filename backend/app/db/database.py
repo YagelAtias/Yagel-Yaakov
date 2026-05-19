@@ -5,26 +5,27 @@ from ..core.settings import get_settings
 
 settings = get_settings()
 
-# Create SQLAlchemy engine. For SQLite only, we need check_same_thread=False.
+# Build the SQLAlchemy engine using the configured DATABASE_URL.
+# Note: SQLite needs a special flag for FastAPI's worker model.
 DATABASE_URL = settings.DATABASE_URL
 
 is_sqlite = DATABASE_URL.startswith("sqlite:")
 
 engine_kwargs = {}
 if is_sqlite:
-    # Using check_same_thread=False is required for SQLite with FastAPI async workers.
+    # SQLite quirk: allow the same connection across threads for the dev server.
     engine_kwargs["connect_args"] = {"check_same_thread": False}
 
 engine = create_engine(DATABASE_URL, **engine_kwargs)
 
-# Factory to generate database sessions on demand
+# Session factory: create a new DB session per request
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
-# All models will inherit from this Base class
+# SQLAlchemy base class for all models
 Base = declarative_base()
 
 def get_db():
-    """Dependency generator that yields a database session per request."""
+    """Yield a fresh DB session for each request, and close it when done."""
     db = SessionLocal()
     try:
         yield db
