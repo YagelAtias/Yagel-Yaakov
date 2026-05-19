@@ -4,7 +4,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import List
 
-from pydantic import BaseSettings
+from pydantic_settings import BaseSettings
 
 
 class Settings(BaseSettings):
