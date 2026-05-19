@@ -70,6 +70,7 @@ class Student(Base):
     grades = relationship("Grade", back_populates="student")
     dorm_leaves = relationship("DormLeave", back_populates="student")
     bagrut_records = relationship("BagrutStatus", back_populates="student")
+    attendance_records = relationship("AttendanceRecord", back_populates="student")
 
 class Classroom(Base):
     """Links Teachers to Students to restrict who can see whose data."""
@@ -99,6 +100,7 @@ class Course(Base):
     teacher = relationship("User", back_populates="courses")
     students = relationship("Student", secondary=student_courses, back_populates="courses")
     exams = relationship("Exam", back_populates="course")
+    attendance_sessions = relationship("AttendanceSession", back_populates="course")
 
 class DistressLog(Base):
     """Highly confidential analysis output. Text is ENCRYPTED."""
@@ -204,3 +206,38 @@ class ScheduleSlot(Base):
     
     # Relationships
     classroom = relationship("Classroom", back_populates="schedule_slots")
+
+
+# --- Attendance (pedagogical) ---
+class AttendanceSession(Base):
+    """A single attendance session for a course on a given date/period."""
+    __tablename__ = "attendance_sessions"
+
+    id = Column(Integer, primary_key=True, index=True)
+    course_id = Column(Integer, ForeignKey("courses.id"), nullable=False, index=True)
+    date = Column(DateTime, nullable=False, index=True)
+    period = Column(Integer, nullable=False)
+    created_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    # Relationships
+    course = relationship("Course", back_populates="attendance_sessions")
+    records = relationship("AttendanceRecord", back_populates="session", cascade="all, delete-orphan")
+
+
+class AttendanceRecord(Base):
+    """Per-student mark inside an attendance session."""
+    __tablename__ = "attendance_records"
+
+    id = Column(Integer, primary_key=True, index=True)
+    session_id = Column(Integer, ForeignKey("attendance_sessions.id"), nullable=False, index=True)
+    student_id = Column(Integer, ForeignKey("students.id"), nullable=False, index=True)
+    # present | late | excused | unexcused
+    status = Column(String, nullable=False, default="present")
+    note = Column(String, nullable=True)
+    marked_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+    marked_at = Column(DateTime, default=datetime.utcnow)
+
+    # Relationships
+    session = relationship("AttendanceSession", back_populates="records")
+    student = relationship("Student", back_populates="attendance_records")
