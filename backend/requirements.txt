@@ -1,7 +1,14 @@
 fastapi
 uvicorn
+sqlalchemy
+pydantic
+pydantic-settings
+passlib[bcrypt]
+python-multipart
+pyjwt
+cryptography
 numpy
 scipy
 librosa
-gensim
-python-multipart
+psycopg2-binary
+alembic
