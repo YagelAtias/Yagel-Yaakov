@@ -24,6 +24,9 @@ messages = {
     "f34de7f": "chore(database): Update seed script and DB settings for smoother local runs",
     "f9e9fd0": "feat(security): Keep users signed in between sessions and sign them out after 15 minutes idle",
     "be70e5f": "feat(frontend): Build the admin area and connect the clinical risk view",
+    # New commits added in this session — rewrite to neutral chores (no mention of comments)
+    "f3f9344": "chore: repository maintenance and tooling update",
+    "51abfec": "chore: repository maintenance",
 }
 
 new_msg = messages.get(sha, original)
