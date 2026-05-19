@@ -1,15 +1,21 @@
 import os
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, declarative_base
+from ..core.settings import get_settings
 
-# SQLite is great for prototyping locally. We will store it in the backend root.
-# Using check_same_thread=False is required for SQLite with FastAPI async workers.
-DB_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "distress_engine.db")
-DATABASE_URL = f"sqlite:///{DB_PATH}"
+settings = get_settings()
 
-engine = create_engine(
-    DATABASE_URL, connect_args={"check_same_thread": False}
-)
+# Create SQLAlchemy engine. For SQLite only, we need check_same_thread=False.
+DATABASE_URL = settings.DATABASE_URL
+
+is_sqlite = DATABASE_URL.startswith("sqlite:")
+
+engine_kwargs = {}
+if is_sqlite:
+    # Using check_same_thread=False is required for SQLite with FastAPI async workers.
+    engine_kwargs["connect_args"] = {"check_same_thread": False}
+
+engine = create_engine(DATABASE_URL, **engine_kwargs)
 
 # Factory to generate database sessions on demand
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)

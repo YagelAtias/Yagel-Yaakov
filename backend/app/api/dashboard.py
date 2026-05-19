@@ -52,10 +52,13 @@ def get_teacher_dashboard(
             models.Exam.date_scheduled >= datetime.utcnow()
         ).all()
     else:
-        upcoming_exams = db.query(models.Exam).filter(
-            models.Exam.course_id.in_(course_ids) if course_ids else False,
-            models.Exam.date_scheduled >= datetime.utcnow()
-        ).all()
+        if not course_ids:
+            upcoming_exams = []
+        else:
+            upcoming_exams = db.query(models.Exam).filter(
+                models.Exam.course_id.in_(course_ids),
+                models.Exam.date_scheduled >= datetime.utcnow()
+            ).all()
     
     # 5. Fetch Critical Risk Alerts (Calculate Risk for each student)
     risk_engine = GlobalRiskEngine(db)
@@ -118,13 +121,14 @@ def get_teacher_dashboard(
             "current_location": current_location,
             "active_leave": active_leave_data,
             "risk_profile": risk_profile,
+            # For privacy and performance, only expose minimal metadata here.
+            # The full (encrypted) text should be fetched via a dedicated endpoint with permissions.
             "recent_conversations": [
                 {
                     "id": log.id,
                     "date": log.timestamp.strftime("%Y-%m-%d %H:%M"),
                     "has_critical_alert": log.has_critical_alert,
                     "score": log.overall_score,
-                    "encrypted_text": log.encrypted_raw_text
                 } for log in logs
             ]
         })

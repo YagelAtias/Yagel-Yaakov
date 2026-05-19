@@ -8,11 +8,9 @@ from app.api.management import router as management_router
 from app.api.dashboard import router as dashboard_router
 from app.api.admin import router as admin_router
 from app.api.leaves import router as leaves_router
-from app.db.database import engine
-from app.db import models
+from app.core.settings import get_settings
 
-# Initialize SQLite database tables
-models.Base.metadata.create_all(bind=engine)
+settings = get_settings()
 
 app = FastAPI(
     title="Yagel-Yaakov Platform",
@@ -20,10 +18,7 @@ app = FastAPI(
     version="0.2.0"
 )
 
-origins = [
-    "http://localhost:5173",
-    "http://127.0.0.1:5173"
-]
+origins = settings.CORS_ORIGINS
 
 app.add_middleware(
     CORSMiddleware,
