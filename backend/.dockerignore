@@ -1,0 +1,23 @@
+# Ignore python compiled files and cache directories.
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Ignore virtual environments.
+.venv/
+env/
+venv/
+ENV/
+
+# Ignore local database files since we will connect to Cloud SQL in production.
+distress_engine.db
+*.sqlite3
+
+# Ignore IDE and OS specific files.
+.vscode/
+.idea/
+.DS_Store
+
+# Ignore environment variables files containing local secrets.
+.env
+.env.local

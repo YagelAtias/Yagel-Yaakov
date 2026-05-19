@@ -1,0 +1,19 @@
+# Ignore node_modules as they will be installed fresh during the build process.
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Ignore the build output directory to prevent overwriting or sending unnecessary files.
+dist/
+dist-ssr/
+build/
+
+# Ignore local environment variables files.
+.env
+.env.local
+
+# Ignore OS and IDE specific files.
+.vscode/
+.idea/
+.DS_Store
