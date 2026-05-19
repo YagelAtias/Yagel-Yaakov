@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { secureFetch } from '../api';
 import './TeacherDashboard.css';
+import ArchiveModal from './ArchiveModal';
 
 export default function TeacherDashboard({ permissions = [] }) {
   const [data, setData] = useState(null);
@@ -9,6 +10,8 @@ export default function TeacherDashboard({ permissions = [] }) {
   const [expandedStudentId, setExpandedStudentId] = useState(null);
   const [recordingStudentId, setRecordingStudentId] = useState(null);
   const [mediaRecorder, setMediaRecorder] = useState(null);
+  const [archiveStudentId, setArchiveStudentId] = useState(null);
+  const [archiveStudentName, setArchiveStudentName] = useState("");
 
   const renderFormattedText = (text) => {
     if (!text) return 'הודעה ריקה';
@@ -181,24 +184,45 @@ export default function TeacherDashboard({ permissions = [] }) {
                     
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
                       <div style={{ fontSize: '0.85rem', fontWeight: 'bold', color: '#455a64' }}>היסטוריית שיחות אחרונות:</div>
-                      <button 
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          recordingStudentId === s.id ? stopTeacherRecording() : startTeacherRecording(s.id);
-                        }}
-                        style={{
-                          padding: '6px 12px',
-                          fontSize: '0.75rem',
-                          borderRadius: '8px',
-                          border: 'none',
-                          cursor: 'pointer',
-                          fontWeight: 'bold',
-                          backgroundColor: recordingStudentId === s.id ? '#ffcdd2' : '#e0f7fa',
-                          color: recordingStudentId === s.id ? '#c62828' : '#00838f'
-                        }}
-                      >
-                        {recordingStudentId === s.id ? "⏹️ סיים תמלול שיחה ליומן" : "🎙️ תמלל שיחה ליומן"}
-                      </button>
+                      <div style={{ display: 'flex', gap: '10px' }}>
+                        <button 
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setArchiveStudentId(s.id);
+                            setArchiveStudentName(s.name);
+                          }}
+                          style={{
+                            padding: '6px 12px',
+                            fontSize: '0.75rem',
+                            borderRadius: '8px',
+                            border: '1px solid #00838f',
+                            cursor: 'pointer',
+                            fontWeight: 'bold',
+                            backgroundColor: '#fff',
+                            color: '#00838f'
+                          }}
+                        >
+                          📂 ארכיון שיחות
+                        </button>
+                        <button 
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            recordingStudentId === s.id ? stopTeacherRecording() : startTeacherRecording(s.id);
+                          }}
+                          style={{
+                            padding: '6px 12px',
+                            fontSize: '0.75rem',
+                            borderRadius: '8px',
+                            border: 'none',
+                            cursor: 'pointer',
+                            fontWeight: 'bold',
+                            backgroundColor: recordingStudentId === s.id ? '#ffcdd2' : '#e0f7fa',
+                            color: recordingStudentId === s.id ? '#c62828' : '#00838f'
+                          }}
+                        >
+                          {recordingStudentId === s.id ? "⏹️ סיים תמלול שיחה ליומן" : "🎙️ תמלל שיחה ליומן"}
+                        </button>
+                      </div>
                     </div>
                     {s.recent_conversations && s.recent_conversations.length > 0 ? (
                     s.recent_conversations.map(conv => (
@@ -327,6 +351,14 @@ export default function TeacherDashboard({ permissions = [] }) {
         </div>
 
       </div>
+
+      {archiveStudentId && (
+        <ArchiveModal
+          studentId={archiveStudentId}
+          studentName={archiveStudentName}
+          onClose={() => setArchiveStudentId(null)}
+        />
+      )}
     </div>
   );
 }
