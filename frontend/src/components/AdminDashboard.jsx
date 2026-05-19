@@ -21,6 +21,7 @@ export default function AdminDashboard() {
   const [classTeacherId, setClassTeacherId] = useState('');
   const [classMessage, setClassMessage] = useState('');
   const [classError, setClassError] = useState('');
+  const [editingClass, setEditingClass] = useState(null);
 
   const loadData = async () => {
     try {
@@ -87,6 +88,70 @@ export default function AdminDashboard() {
       setError(err.message || 'אירעה שגיאה ביצירת החשבון');
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const resetClassForm = () => {
+    setEditingClass(null);
+    setClassType('classroom');
+    setClassName('');
+    setClassTeacherId('');
+    setClassError('');
+    setClassMessage('');
+  };
+
+  const handleClassSubmit = async (e) => {
+    e.preventDefault();
+    setClassError('');
+    setClassMessage('');
+
+    try {
+      const endpoint = editingClass
+        ? `/admin/classes/${editingClass.class_type}/${editingClass.id}`
+        : '/admin/classes';
+
+      const res = await secureFetch(endpoint, {
+        method: editingClass ? 'PUT' : 'POST',
+        body: JSON.stringify({
+          class_type: classType,
+          name: className,
+          teacher_id: classTeacherId ? parseInt(classTeacherId) : null
+        })
+      });
+
+      if (res.detail) throw new Error(res.detail);
+      setClassMessage(res.message || 'Saved successfully');
+      setEditingClass(null);
+      setClassName('');
+      setClassTeacherId('');
+      loadData();
+    } catch (err) {
+      setClassError(err.message || 'Failed to save class');
+    }
+  };
+
+  const startEditClass = (classItem, classTypeValue) => {
+    setEditingClass({ ...classItem, class_type: classTypeValue });
+    setClassType(classTypeValue);
+    setClassName(classItem.name || '');
+    setClassTeacherId(classItem.teacher_id ? String(classItem.teacher_id) : '');
+    setClassError('');
+    setClassMessage('');
+  };
+
+  const handleDeleteClass = async (classId, classTypeValue) => {
+    if (!window.confirm('Delete this class?')) return;
+
+    try {
+      const res = await secureFetch(`/admin/classes/${classTypeValue}/${classId}`, {
+        method: 'DELETE'
+      });
+
+      if (res.detail) throw new Error(res.detail);
+      setClassMessage(res.message || 'Deleted successfully');
+      loadData();
+    } catch (err) {
+      setClassError(err.message || 'Failed to delete class');
     }
   };
 
@@ -199,27 +264,7 @@ export default function AdminDashboard() {
             <h3>הוספת כיתת אם / קבוצת לימוד</h3>
           </div>
           <div className="panel-content">
-            <form onSubmit={async (e) => {
-              e.preventDefault();
-              setClassError('');
-              setClassMessage('');
-              try {
-                const res = await secureFetch('/admin/classes', {
-                  method: 'POST',
-                  body: JSON.stringify({
-                    class_type: classType,
-                    name: className,
-                    teacher_id: classTeacherId ? parseInt(classTeacherId) : null
-                  })
-                });
-                if (res.detail) throw new Error(res.detail);
-                setClassMessage(res.message);
-                setClassName('');
-                loadData();
-              } catch (err) {
-                setClassError(err.message || 'שגיאה ביצירת הכיתה');
-              }
-            }} className="onboard-form">
+            <form onSubmit={handleClassSubmit} className="onboard-form">
               <div className="form-group">
                 <label>סוג כיתה</label>
                 <select value={classType} onChange={e => setClassType(e.target.value)}>
@@ -231,8 +276,8 @@ export default function AdminDashboard() {
                 <label>שם הכיתה / קבוצה</label>
                 <input
                   type="text"
-                  value={courseName}
-                  onChange={(e) => setCourseName(e.target.value)}
+                  value={className}
+                  onChange={(e) => setClassName(e.target.value)}
                   placeholder='לדוגמה: "מתמטיקה 4 יח״ל - קבוצה א"'
                   required
                 />
@@ -240,8 +285,8 @@ export default function AdminDashboard() {
               <div className="form-group">
                 <label>שיוך מורה</label>
                 <select
-                  value={selectedTeacherId}
-                  onChange={(e) => setSelectedTeacherId(e.target.value)}
+                  value={classTeacherId}
+                  onChange={(e) => setClassTeacherId(e.target.value)}
                   required
                 >
                   <option value="">-- בחר מורה --</option>
@@ -251,22 +296,18 @@ export default function AdminDashboard() {
                 </select>
               </div>
 
-              {courseError && <div className="admin-error">{courseError}</div>}
-              {courseMessage && <div className="admin-success">{courseMessage}</div>}
+              {classError && <div className="admin-error">{classError}</div>}
+              {classMessage && <div className="admin-success">{classMessage}</div>}
 
               <div style={{ display: 'flex', gap: '10px' }}>
                 <button type="submit" className="btn-submit-staff" style={{ backgroundColor: 'var(--col-mint)' }}>
-                  {editingCourse ? 'עדכן כיתה' : 'צור כיתה'}
+                  {editingClass ? 'עדכן כיתה' : 'צור כיתה'}
                 </button>
-                {editingCourse && (
+                {editingClass && (
                   <button
                     type="button"
                     onClick={() => {
-                      setEditingCourse(null);
-                      setCourseName('');
-                      setSelectedTeacherId('');
-                      setCourseError('');
-                      setCourseMessage('');
+                      resetClassForm();
                     }}
                     className="btn-submit-staff"
                     style={{ backgroundColor: '#999' }}
@@ -314,7 +355,7 @@ export default function AdminDashboard() {
                         ניהול תלמידים
                       </button>
                       <button
-                        onClick={() => startEditCourse(c)}
+                        onClick={() => startEditClass(c, 'course')}
                         style={{
                           padding: '6px 12px',
                           fontSize: '0.8rem',
@@ -329,7 +370,7 @@ export default function AdminDashboard() {
                         ערוך
                       </button>
                       <button
-                        onClick={() => handleDeleteCourse(c.id)}
+                        onClick={() => handleDeleteClass(c.id, 'course')}
                         style={{
                           padding: '6px 12px',
                           fontSize: '0.8rem',
