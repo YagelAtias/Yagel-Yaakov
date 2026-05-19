@@ -8,6 +8,7 @@ from app.api.management import router as management_router
 from app.api.dashboard import router as dashboard_router
 from app.api.admin import router as admin_router
 from app.api.leaves import router as leaves_router
+from app.api.attendance import router as attendance_router
 from app.core.settings import get_settings
 
 settings = get_settings()
@@ -37,6 +38,7 @@ app.include_router(management_router, prefix="/api/v2", tags=["School Management
 app.include_router(dashboard_router, prefix="/api/v2", tags=["Mobile App Core"])
 app.include_router(admin_router, prefix="/api/v2/admin", tags=["Admin"])
 app.include_router(leaves_router, prefix="/api/v2/leaves", tags=["Leaves"])
+app.include_router(attendance_router, prefix="/api/v2/attendance", tags=["Attendance"])
 
 @app.get("/")
 def read_root():
