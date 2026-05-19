@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 from ..db import models, database
 from ..core.settings import get_settings
 
-# Security configuration via centralized settings
+# Security bits pulled from centralized settings so we set them once per env
 settings = get_settings()
 SECRET_KEY = settings.JWT_SECRET_KEY
 ALGORITHM = "HS256"
@@ -39,7 +39,7 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
     return encoded_jwt
 
 def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(database.get_db)):
-    """Dependency that extracts the JWT token, validates it, and returns the User or Student object."""
+    """Read the JWT from the header, validate it, and return the matching user (staff or student)."""
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Could not validate credentials",
@@ -58,7 +58,7 @@ def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(
     if user_type == "student":
         user = db.query(models.Student).filter(models.Student.email == email).first()
         if user:
-            # Attach a temporary role string so the require_role gatekeeper works seamlessly
+            # Set student role so role checks work the same
             user.role = "student" 
     else:
         user = db.query(models.User).filter(models.User.email == email).first()
@@ -68,10 +68,7 @@ def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(
     return user
 
 def require_role(required_roles: list[str]):
-    """
-    Dependency generator for Role-Based Access Control (RBAC).
-    Checks if the currently authenticated user's role is in the required_roles list.
-    """
+    """Let routes say who can access them (e.g., ["teacher", "admin"])."""
     def role_checker(current_user: models.User = Depends(get_current_user)):
         if current_user.role not in required_roles:
             raise HTTPException(
@@ -82,10 +79,7 @@ def require_role(required_roles: list[str]):
     return role_checker
 
 def require_permission(permission: str):
-    """
-    Dependency generator for Permission-Based Access Control.
-    Checks if the authenticated user's permissions JSON contains the required permission.
-    """
+    """Check a specific granular permission on staff (students are blocked)."""
     def permission_checker(current_user: models.User = Depends(get_current_user)):
         if getattr(current_user, "role", None) == "student":
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Students lack permissions")

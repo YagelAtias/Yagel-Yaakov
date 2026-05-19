@@ -14,12 +14,10 @@ def get_teacher_dashboard(
     current_user: models.User = Depends(require_role(["teacher", "admin", "counselor"]))
 ):
     """
-    The 'Mega-Endpoint' for the Mobile App.
-    ARCHITECTURE REASONING:
-    Mobile networks can be slow and phones have limited battery. Instead of forcing the React app 
-    to make 10+ different API calls (fetch students, then fetch dorms, then fetch exams...), 
-    this single endpoint acts as a funnel. It queries the database and packages the teacher's 
-    entire necessary ecosystem state into one lightning-fast JSON response.
+    Teacher dashboard in one call.
+    Reason: phones and mobile networks work better with fewer requests. Instead of many small
+    calls (students, dorms, exams, etc.), this endpoint collect the data a teacher needs and
+    return it in one JSON. Faster to load, lighter on battery and data.
     """
     
     # 1. Fetch Classrooms and Courses owned by this teacher (or all if admin/counselor)
@@ -60,13 +58,13 @@ def get_teacher_dashboard(
                 models.Exam.date_scheduled >= datetime.utcnow()
             ).all()
     
-    # 5. Fetch Critical Risk Alerts (Calculate Risk for each student)
+    # 5. Fetch critical risk alerts (calculate risk per student)
     risk_engine = GlobalRiskEngine(db)
     students_at_risk = []
     
     for student in students:
         risk_profile = risk_engine.calculate_student_risk(student.id)
-        # If the student has a critical alert or high global risk, flag them on the dashboard immediately
+        # If a student has a recent critical alert or a high risk score, flag them on the dashboard
         if risk_profile.get("has_recent_critical") or risk_profile.get("global_risk_score", 0) > 0.6:
             students_at_risk.append({
                 "student_id": student.id,
@@ -74,7 +72,7 @@ def get_teacher_dashboard(
                 "risk_profile": risk_profile
             })
             
-    # Organize students and their conversation logs
+    # Build student entries and include a short view of recent conversations
     class_map = {c.id: c.name for c in classrooms}
     students_data = []
     
@@ -86,10 +84,10 @@ def get_teacher_dashboard(
             models.DistressLog.student_id == student.id
         ).order_by(models.DistressLog.timestamp.desc()).limit(5).all()
         
-        # Calculate their risk profile for the clinical dashboard view
+        # Calculate the risk profile for the clinical view
         risk_profile = risk_engine.calculate_student_risk(student.id)
         
-        # Calculate Current Location
+        # Figure out current location based on active leave
         current_time = datetime.utcnow()
         active_leave = db.query(models.DormLeave).filter(
             models.DormLeave.student_id == student.id,
@@ -121,8 +119,8 @@ def get_teacher_dashboard(
             "current_location": current_location,
             "active_leave": active_leave_data,
             "risk_profile": risk_profile,
-            # For privacy and performance, only expose minimal metadata here.
-            # The full (encrypted) text should be fetched via a dedicated endpoint with permissions.
+            # For privacy and performance, show only minimal metadata here.
+            # Fetch full (encrypted) text via a separate endpoint with permissions.
             "recent_conversations": [
                 {
                     "id": log.id,
@@ -133,7 +131,7 @@ def get_teacher_dashboard(
             ]
         })
             
-    # Package and send!
+    # Package the response
     return {
         "status": "success",
         "user_name": current_user.full_name,
