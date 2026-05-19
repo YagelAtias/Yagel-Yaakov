@@ -22,16 +22,22 @@ def get_teacher_dashboard(
     entire necessary ecosystem state into one lightning-fast JSON response.
     """
     
-    # 1. Fetch Classrooms owned by this teacher (or all if admin/counselor)
+    # 1. Fetch Classrooms and Courses owned by this teacher (or all if admin/counselor)
     if current_user.role in ["admin", "counselor"]:
         classrooms = db.query(models.Classroom).filter(models.Classroom.organization_id == current_user.organization_id).all()
+        courses = db.query(models.Course).filter(models.Course.organization_id == current_user.organization_id).all()
     else:
         classrooms = db.query(models.Classroom).filter(models.Classroom.teacher_id == current_user.id).all()
+        courses = db.query(models.Course).filter(models.Course.teacher_id == current_user.id).all()
         
     classroom_ids = [c.id for c in classrooms]
+    course_ids = [c.id for c in courses]
     
-    # 2. Fetch Students in those classrooms
-    students = db.query(models.Student).filter(models.Student.classroom_id.in_(classroom_ids)).all()
+    # 2. Fetch Students in those classrooms or courses
+    students = db.query(models.Student).filter(
+        models.Student.classroom_id.in_(classroom_ids) |
+        models.Student.courses.any(models.Course.id.in_(course_ids))
+    ).all()
     student_ids = [s.id for s in students]
     
     # 3. Fetch Pending Dorm Leaves for these students
@@ -41,10 +47,15 @@ def get_teacher_dashboard(
     ).all()
     
     # 4. Fetch Upcoming Exams
-    upcoming_exams = db.query(models.Exam).filter(
-        models.Exam.classroom_id.in_(classroom_ids),
-        models.Exam.date_scheduled >= datetime.utcnow()
-    ).all()
+    if current_user.role in ["admin", "counselor"]:
+        upcoming_exams = db.query(models.Exam).filter(
+            models.Exam.date_scheduled >= datetime.utcnow()
+        ).all()
+    else:
+        upcoming_exams = db.query(models.Exam).filter(
+            models.Exam.course_id.in_(course_ids) if course_ids else False,
+            models.Exam.date_scheduled >= datetime.utcnow()
+        ).all()
     
     # 5. Fetch Critical Risk Alerts (Calculate Risk for each student)
     risk_engine = GlobalRiskEngine(db)
@@ -155,11 +166,12 @@ def get_student_dashboard(
     # Fetch school's staff members for the contact dropdown
     staff = db.query(models.User).filter(models.User.organization_id == current_user.organization_id).all()
     
-    # Fetch exams for student's classroom
+    # Fetch exams for student's courses
     exams = []
-    if current_user.classroom_id:
+    if current_user.courses:
+        course_ids = [c.id for c in current_user.courses]
         exams = db.query(models.Exam).filter(
-            models.Exam.classroom_id == current_user.classroom_id,
+            models.Exam.course_id.in_(course_ids),
             models.Exam.date_scheduled >= datetime.utcnow()
         ).all()
         

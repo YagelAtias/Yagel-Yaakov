@@ -30,7 +30,7 @@ HE_STOPWORDS = {
 # Target clusters for distress detection.
 CLINICAL_TOPICS: List[Dict] = [
     {"id": "sadness", "weight": 0.8,
-     "words": ["עצוב", "עצובה", "דכדוך", "עצבות", "בוכה", "לב שבור", "כואב לי", "מדוכא", "מדוכאת", "דיכאון", "בדיכאון"]},
+     "words": ["עצוב", "עצובה", "דכדוך", "עצבות", "בוכה", "לב שבור", "כואב לי", "מדוכא", "מדוכאת", "דיכאון", "בדיכאון", "דכאון", "בדכאון"]},
     {"id": "hopelessness", "weight": 0.9,
      "words": ["ייאוש", "אין תקווה", "חסר סיכוי", "חסרת סיכוי", "למה לנסות", "אבוד", "אבודה", "חסר תוחלת", "נגמר לי", "מיואש", "מיואשת"]},
     {"id": "rumination", "weight": 0.7,
@@ -49,7 +49,7 @@ CLINICAL_TOPICS: List[Dict] = [
         "רוצה לגמור עם זה", "לחדול", "להרוג", "התאבד"
     ]},
     {"id": "anxiety_agitation", "weight": 0.7,
-     "words": ["חרדה", "לחץ", "חוסר מנוחה", "דפיקות לב", "מחנק", "משתגע", "משתגעת", "מתוח", "מתוחה", "קצר בנשימה", "לחוצה", "לחוץ", "בלחץ"]},
+     "words": ["חרדה", "לחץ", "חוסר מנוחה", "דפיקות לב", "מחנק", "משתגע", "משתגעת", "מתוח", "מתוחה", "קצר בנשימה", "לחוצה", "לחוץ", "בלחץ", "הצילו"]},
     {"id": "insomnia", "weight": 0.6,
      "words": ["נדודי שינה", "לא ישן", "לא ישנה", "לא הצלחתי לישון", "הפוך", "הפוכה", "ער כל הלילה", "מסתכל על התקרה",
                "לישון", "שינה", "ישנתי", "נדודי", "לילה"]},
@@ -119,7 +119,8 @@ def _normalize_token(tok: str) -> str:
         "להתאבד", "התאבדות", "אתאבד",  # Critical for safety override
         "לחיות", "חיים",  # Added to prevent stripping 'L' from Lichyot
         "בסדר",  # Prevent 'B' from being stripped
-        "דיכאון", "בדיכאון" # Prevent B from being stripped from Depression
+        "דיכאון", "בדיכאון", "דכאון", "בדכאון", # Prevent B from being stripped from Depression
+        "הצילו" # Prevent H from being stripped
     }
 
     if tok in PROTECTED_WORDS:
@@ -445,7 +446,8 @@ class HebrewWMDSignal(DistressSignal):
                     if has_neg and base_score > 0.2:
                         base_score *= 0.5
 
-            critical_alert = (best_topic == "self_harm_ideas")
+            is_valid_sim = (1.0 - dist) >= 0.60
+            critical_alert = (best_topic == "self_harm_ideas" and (method in ["critical_override", "exact_keyword"] or is_valid_sim))
 
             word_intensities = {w.get("word"): w.get("intensity") for w in seg.get("words", [])}
             

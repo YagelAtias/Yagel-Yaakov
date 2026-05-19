@@ -25,9 +25,8 @@ export default function ArchiveModal({ studentId, studentName, onClose }) {
   // Group logs by Hebrew year
   const groupedLogs = {};
   logs.forEach(log => {
-    // Treat the timestamp from the backend as UTC if needed, but DB timestamp is usually naive UTC in sqlite.
-    // Adding 'Z' ensures JS treats it as UTC.
-    const dateObj = new Date(log.timestamp + 'Z');
+    // The backend now provides an ISO string with 'Z'
+    const dateObj = new Date(log.timestamp);
     const hDate = new HDate(dateObj);
     const hYear = hDate.renderGematriya().split(' ').pop(); // e.g. תשפ"ה
     const hYearLabel = `שנת ${hYear}`;

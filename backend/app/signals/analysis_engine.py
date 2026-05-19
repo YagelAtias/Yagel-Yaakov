@@ -13,6 +13,17 @@ from app.services.push_service import PushNotificationService
 
 router = APIRouter()
 
+@router.post("/transcribe_audio")
+async def transcribe_audio_only(file: UploadFile = File(...)):
+    """
+    Step 1 of the new flow: Transcribe the audio and return the segments.
+    The teacher can review/edit this before it gets analyzed and saved.
+    """
+    audio_bytes = await file.read()
+    processor = AudioProcessor()
+    audio_result = processor.process_audio(audio_bytes)
+    return audio_result
+
 @router.post("/analyze_audio")
 async def analyze_audio(
     file: UploadFile = File(...), 
@@ -48,28 +59,37 @@ async def analyze_all_signals(
     latency_engine = TypingLatencySignal()
 
     req = request.model_dump()
-
     segments = req.get("segments") or []
+    edited_text = req.get("text", "")
+    text_was_edited = req.get("text_was_edited", False)
 
     # Prepare inputs: Entropy needs full context, while WMD needs granular segments
-    if segments:
-        # Join segments for global entropy assessment
+    if text_was_edited or not segments:
+        # If user manually corrected text, we must use it for accurate WMD and Entropy
+        # We wrap it in a synthetic segment to preserve compatibility
+        
+        # Determine overall intensity from segments if available
+        overall_intensity = "normal"
+        if segments:
+            shout_cnt = sum(1 for s in segments if s.get("intensity") == "shout")
+            whisper_cnt = sum(1 for s in segments if s.get("intensity") == "whisper")
+            if shout_cnt > 0: overall_intensity = "shout"
+            elif whisper_cnt > 0: overall_intensity = "whisper"
+            
+        synthetic_segments = [{"text": edited_text, "intensity": overall_intensity}]
+        semantic_input = {
+            "segments": synthetic_segments,
+            "latencies": req.get("latencies") or []
+        }
+        entropy_input = {"text": edited_text}
+    else:
+        # Use granular segments
         full_text = " ".join([s.get("text", "") for s in segments if s.get("text")])
-        # Pass structured segments for per-segment semantic scoring
         semantic_input = {
             "segments": segments,
             "latencies": req.get("latencies") or []
         }
         entropy_input = {"text": full_text}
-    else:
-        # Fallback for raw text input (legacy support)
-        # The WMD engine handles internal sentence splitting
-        semantic_input = {
-            "text": req.get("text", ""),
-            "avg_decibels": req.get("avg_decibels", 0.0),
-            "latencies": req.get("latencies") or []
-        }
-        entropy_input = {"text": req.get("text", "")}
 
     # Execute analysis
     entropy_res = entropy_engine.analyze(entropy_input)
@@ -154,7 +174,8 @@ async def analyze_all_signals(
         db.commit()
 
     # 2. Extract raw text for encryption
-    if segments:
+    raw_text = req.get("text", "").strip()
+    if not text_was_edited and segments:
         formatted_text_parts = []
         for seg in segments:
             for w in seg.get("words", []):
@@ -168,7 +189,18 @@ async def analyze_all_signals(
                     formatted_text_parts.append(word)
         raw_text = " ".join(formatted_text_parts)
     else:
-        raw_text = req.get("text", "")
+        # If edited, apply overall formatting
+        overall_intensity = "normal"
+        if segments:
+            shout_cnt = sum(1 for s in segments if s.get("intensity") == "shout")
+            whisper_cnt = sum(1 for s in segments if s.get("intensity") == "whisper")
+            if shout_cnt > 0: overall_intensity = "shout"
+            elif whisper_cnt > 0: overall_intensity = "whisper"
+            
+        if overall_intensity == "shout":
+            raw_text = f"**{raw_text}**"
+        elif overall_intensity == "whisper":
+            raw_text = f"*{raw_text}*"
     
     # 3. MILITARY-GRADE ENCRYPTION: Encrypt the text before it touches the hard drive
     encrypted_text = encrypt_text(raw_text)
@@ -185,9 +217,9 @@ async def analyze_all_signals(
     db.commit()
 
     # 5. PUSH NOTIFICATIONS: Alert staff if distress is high
-    if has_critical or overall_score >= 0.8:
+    if has_critical or overall_score >= 0.6:
         student_name = f"{student.first_name} {student.last_name}"
-        alert_reason = "התראת מצוקה קריטית" if has_critical else "ציון מצוקה גבוה זוהה"
+        alert_reason = "התראת מצוקה קריטית" if has_critical else "ציון מצוקה משמעותי זוהה"
         PushNotificationService.send_to_staff_for_student(
             student_id=request.student_id,
             title=f"🚨 התראת DistressEngine: {student_name}",

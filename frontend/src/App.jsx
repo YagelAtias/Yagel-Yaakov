@@ -63,14 +63,14 @@ function App() {
       Content = <AdminDashboard />;
     } else {
       // Default to TeacherDashboard for 'ראשי' or other tabs if not implemented
-      Content = <TeacherDashboard permissions={userPermissions} />;
+      Content = <TeacherDashboard permissions={userPermissions} activeTab={activeTab} role={userRole} />;
     }
   }
 
   // If logged in, show the appropriate Dashboard
   return (
     <div className="app-root">
-      <Navbar role={userRole} activeTab={activeTab} setActiveTab={setActiveTab} onLogout={handleLogout} />
+      <Navbar role={userRole} permissions={userPermissions} activeTab={activeTab} setActiveTab={setActiveTab} onLogout={handleLogout} />
       {Content}
     </div>
   );

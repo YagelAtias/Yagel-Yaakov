@@ -29,23 +29,37 @@ def get_student_logs(
             models.Classroom.id == student.classroom_id,
             models.Classroom.teacher_id == current_user.id
         ).first()
+        
+        # We need to filter logs down to ONLY the ones they authored, UNLESS they are the homeroom teacher
+        # If they are NOT the homeroom teacher, they can only see logs they authored.
         if not classroom:
-            raise HTTPException(status_code=403, detail="You are not authorized to view this student's full log archive.")
-
-    # 3. Fetch the encrypted logs from the database
-    logs = db.query(models.DistressLog).filter(models.DistressLog.student_id == student_id).order_by(models.DistressLog.timestamp.desc()).all()
+            logs = db.query(models.DistressLog).filter(
+                models.DistressLog.student_id == student_id,
+                models.DistressLog.author_id == current_user.id
+            ).order_by(models.DistressLog.timestamp.desc()).all()
+            if not logs:
+                 raise HTTPException(status_code=403, detail="You are not authorized to view this student's full log archive.")
+        else:
+             logs = db.query(models.DistressLog).filter(models.DistressLog.student_id == student_id).order_by(models.DistressLog.timestamp.desc()).all()
+    else:
+        # Admins and Counselors can see all logs
+        logs = db.query(models.DistressLog).filter(models.DistressLog.student_id == student_id).order_by(models.DistressLog.timestamp.desc()).all()
     
     # 3. Decrypt the text in RAM
     decrypted_logs = []
     for log in logs:
+        try:
+            decrypted = decrypt_text(log.encrypted_raw_text) if log.encrypted_raw_text else ""
+        except Exception:
+            decrypted = "[שגיאת פענוח: התוכן לא הוצפן כראוי או שמפתח ההצפנה שגוי]"
+            
         log_dict = {
             "id": log.id,
-            "timestamp": log.timestamp,
+            "timestamp": log.timestamp.isoformat() + "Z", # Ensure UI treats it as UTC
             "overall_score": log.overall_score,
             "has_critical_alert": log.has_critical_alert,
             "signals": log.signals_metadata,
-            # Use the AES-256 Master Key to decrypt the ciphertext
-            "decrypted_text": decrypt_text(log.encrypted_raw_text) if log.encrypted_raw_text else ""
+            "decrypted_text": decrypted
         }
         decrypted_logs.append(log_dict)
         

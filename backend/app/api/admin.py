@@ -64,7 +64,32 @@ def onboard_staff(
     db.refresh(new_user)
     
     return {
-        "status": "success", 
-        "user_id": new_user.id, 
+        "status": "success",
+        "user_id": new_user.id,
         "message": f"Successfully onboarded {staff.role} with secure DEK lockbox."
+    }
+
+@router.get("/staff")
+def get_all_staff(
+    db: Session = Depends(database.get_db),
+    current_admin: models.User = Depends(require_role(["admin"]))
+):
+    """
+    Returns all staff members (teachers, counselors, admins) in the organization.
+    """
+    staff = db.query(models.User).filter(
+        models.User.organization_id == current_admin.organization_id
+    ).all()
+
+    return {
+        "status": "success",
+        "staff": [
+            {
+                "id": s.id,
+                "full_name": s.full_name,
+                "email": s.email,
+                "role": s.role
+            }
+            for s in staff
+        ]
     }

@@ -1,5 +1,6 @@
 import os
 import tempfile
+import subprocess
 import librosa
 import numpy as np
 from faster_whisper import WhisperModel
@@ -28,28 +29,33 @@ class AudioProcessor:
         decibel level for the exact milliseconds each word was spoken.
         """
         temp_fd, temp_path = tempfile.mkstemp(suffix=".webm")
+        wav_path = temp_path + ".wav"
         
         try:
             with os.fdopen(temp_fd, 'wb') as f:
                 f.write(audio_bytes)
 
-            # Load the audio using librosa to calculate global reference
-            y, sr_librosa = librosa.load(temp_path, sr=None)
+            # Explicitly convert WebM to WAV using the ffmpeg binary to avoid librosa/ffprobe issues
+            subprocess.run([
+                _ffmpeg_exe, "-y", "-i", temp_path, 
+                "-ac", "1", "-ar", "16000", wav_path
+            ], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+            # Load the WAV file using librosa
+            y, sr_librosa = librosa.load(wav_path, sr=16000)
             
             if len(y) == 0:
                 return {"status": "success", "segments": []}
-                
-            global_max = np.max(np.abs(y)) if np.max(np.abs(y)) > 0 else 1.0
             
             # Transcribe with Whisper, requesting word-level timestamps
             # Enable VAD (Voice Activity Detection) to stop the AI from hallucinating 
             # sentences like "תודה רבה" (Thanks for watching) during background noise/silence.
+            # Transcribe the WAV file with Whisper
             segments_gen, _ = self.model.transcribe(
-                temp_path, 
+                wav_path, 
                 language="he", 
                 word_timestamps=True,
-                vad_filter=True,
-                vad_parameters=dict(min_silence_duration_ms=500),
+                vad_filter=False,
                 condition_on_previous_text=False
             )
             
@@ -83,16 +89,20 @@ class AudioProcessor:
                         if len(rms) == 0 or np.max(rms) == 0:
                             intensity = "normal"
                         else:
-                            db_values = librosa.amplitude_to_db(rms, ref=global_max)
+                            # Use absolute reference (1.0) instead of the recording's max
+                            # This ensures we measure true volume, not just the loudest word in the current recording.
+                            db_values = librosa.amplitude_to_db(rms, ref=1.0)
                             avg_db = np.mean(db_values)
                             segment_max_intensity = max(segment_max_intensity, avg_db)
                             
-                            # Map relative dB to whisper, normal, shout.
-                            # Adjusted thresholds since we turned off browser AutoGainControl.
-                            # RMS values are typically 12-15dB lower than peak, so -20dB is a solid shout.
-                            if avg_db > -20:
+                            # With absolute reference (1.0) and AutoGainControl OFF:
+                            # Hardware mic gains vary, but generally without AGC:
+                            # Shouting peaks around -20dB to -15dB
+                            # Normal speech is around -45dB to -25dB
+                            # Whispering is < -45dB
+                            if avg_db > -26:
                                 intensity = "shout"
-                            elif avg_db < -40:
+                            elif avg_db < -42:
                                 intensity = "whisper"
                             else:
                                 intensity = "normal"
@@ -106,9 +116,9 @@ class AudioProcessor:
                 
                 # Determine overall segment intensity for backwards compatibility / UI coloring
                 overall_intensity = "normal"
-                if segment_max_intensity > -20:
+                if segment_max_intensity > -26:
                     overall_intensity = "shout"
-                elif segment_max_intensity < -40:
+                elif segment_max_intensity < -42:
                     overall_intensity = "whisper"
                     
                 structured_segments.append({
@@ -130,5 +140,10 @@ class AudioProcessor:
             if os.path.exists(temp_path):
                 try:
                     os.remove(temp_path)
+                except OSError:
+                    pass
+            if os.path.exists(wav_path):
+                try:
+                    os.remove(wav_path)
                 except OSError:
                     pass

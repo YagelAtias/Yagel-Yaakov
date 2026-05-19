@@ -1,7 +1,7 @@
 import React from 'react';
 import './Navbar.css';
 
-export default function Navbar({ role, activeTab, setActiveTab, onLogout }) {
+export default function Navbar({ role, permissions = [], activeTab, setActiveTab, onLogout }) {
   return (
     <nav className="navbar">
       {/* Brand */}
@@ -27,10 +27,12 @@ export default function Navbar({ role, activeTab, setActiveTab, onLogout }) {
             <div className={`nav-link ${activeTab === 'ראשי' ? 'active' : ''}`} onClick={() => setActiveTab('ראשי')}>ראשי</div>
             <div className={`nav-link ${activeTab === 'תלמידים' ? 'active' : ''}`} onClick={() => setActiveTab('תלמידים')}>תלמידים</div>
             <div className={`nav-link ${activeTab === 'כיתות' ? 'active' : ''}`} onClick={() => setActiveTab('כיתות')}>כיתות</div>
-            <div className={`nav-link ${activeTab === 'יציאות' ? 'active' : ''}`} onClick={() => setActiveTab('יציאות')}>יציאות</div>
+            {((permissions || []).includes('can_manage_leaves') || role === 'admin') && (
+              <div className={`nav-link ${activeTab === 'יציאות' ? 'active' : ''}`} onClick={() => setActiveTab('יציאות')}>יציאות</div>
+            )}
             <div className={`nav-link ${activeTab === 'מבחנים' ? 'active' : ''}`} onClick={() => setActiveTab('מבחנים')}>מבחנים</div>
             {role === 'admin' && (
-              <div className={`nav-link ${activeTab === 'ניהול' ? 'active' : ''}`} onClick={() => setActiveTab('ניהול')}>ניהול צוות</div>
+              <div className={`nav-link ${activeTab === 'ניהול' ? 'active' : ''}`} onClick={() => setActiveTab('ניהול')}>ניהול צוות וכיתות</div>
             )}
           </>
         )}

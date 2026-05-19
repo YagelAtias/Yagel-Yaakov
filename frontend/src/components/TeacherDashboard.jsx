@@ -2,16 +2,28 @@ import React, { useState, useEffect } from 'react';
 import { secureFetch } from '../api';
 import './TeacherDashboard.css';
 import ArchiveModal from './ArchiveModal';
+import RecordingModal from './RecordingModal';
 
-export default function TeacherDashboard({ permissions = [] }) {
+export default function TeacherDashboard({ permissions = [], activeTab, role }) {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [expandedStudentId, setExpandedStudentId] = useState(null);
-  const [recordingStudentId, setRecordingStudentId] = useState(null);
-  const [mediaRecorder, setMediaRecorder] = useState(null);
   const [archiveStudentId, setArchiveStudentId] = useState(null);
   const [archiveStudentName, setArchiveStudentName] = useState("");
+  const [recordingStudentId, setRecordingStudentId] = useState(null);
+  const [recordingStudentName, setRecordingStudentName] = useState("");
+
+  // Course management state
+  const [courses, setCourses] = useState([]);
+  const [expandedCourseId, setExpandedCourseId] = useState(null);
+  const [courseExams, setCourseExams] = useState({});
+  const [courseStudents, setCourseStudents] = useState({});
+  const [showExamModal, setShowExamModal] = useState(false);
+  const [selectedCourseForExam, setSelectedCourseForExam] = useState(null);
+  const [examSubject, setExamSubject] = useState('');
+  const [examDate, setExamDate] = useState('');
+  const [examDescription, setExamDescription] = useState('');
 
   const renderFormattedText = (text) => {
     if (!text) return 'הודעה ריקה';
@@ -27,61 +39,107 @@ export default function TeacherDashboard({ permissions = [] }) {
     });
   };
 
-  const startTeacherRecording = async (studentId) => {
+  const loadDashboard = async () => {
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const recorder = new MediaRecorder(stream);
-      const chunks = [];
-      recorder.ondataavailable = (e) => {
-        if (e.data.size > 0) chunks.push(e.data);
-      };
-      recorder.onstop = async () => {
-        const audioBlob = new Blob(chunks, { type: 'audio/webm' });
-        const formData = new FormData();
-        formData.append('file', audioBlob, 'audio.webm');
-        formData.append('student_id', studentId);
-        
-        try {
-          await secureFetch('/analyze_audio', {
-            method: 'POST',
-            body: formData
-          });
-          alert('השיחה תומללה, נותחה, ונשמרה בהצלחה!');
-          const result = await secureFetch('/dashboard/teacher');
-          setData(result);
-        } catch(e) {
-          alert('שגיאה בשמירת התמלול: ' + e.message);
-        }
-      };
-      recorder.start();
-      setMediaRecorder(recorder);
-      setRecordingStudentId(studentId);
-    } catch(err) {
-      alert("שגיאה בגישה למיקרופון: " + err.message);
+      const result = await secureFetch('/dashboard/teacher');
+      setData(result);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
     }
   };
 
-  const stopTeacherRecording = () => {
-    if (mediaRecorder) {
-      mediaRecorder.stop();
-      mediaRecorder.stream.getTracks().forEach(track => track.stop());
-      setRecordingStudentId(null);
+  const loadCourses = async () => {
+    try {
+      const result = await secureFetch('/courses');
+      setCourses(result.courses || []);
+    } catch (err) {
+      console.error('Failed to load courses:', err);
+    }
+  };
+
+  const loadCourseExams = async (courseId) => {
+    try {
+      const result = await secureFetch(`/courses/${courseId}/exams`);
+      setCourseExams(prev => ({ ...prev, [courseId]: result.exams || [] }));
+    } catch (err) {
+      console.error('Failed to load course exams:', err);
+    }
+  };
+
+  const loadCourseStudents = async (courseId) => {
+    try {
+      const result = await secureFetch(`/courses/${courseId}/students`);
+      setCourseStudents(prev => ({ ...prev, [courseId]: result.students || [] }));
+    } catch (err) {
+      console.error('Failed to load course students:', err);
+    }
+  };
+
+  const handleCreateExam = async () => {
+    if (!examSubject.trim() || !examDate) {
+      alert('נא למלא את כל השדות');
+      return;
+    }
+
+    try {
+      await secureFetch(`/courses/${selectedCourseForExam.id}/exams`, {
+        method: 'POST',
+        body: JSON.stringify({
+          subject: examSubject,
+          date_scheduled: new Date(examDate).toISOString(),
+          description: examDescription
+        })
+      });
+
+      setShowExamModal(false);
+      setExamSubject('');
+      setExamDate('');
+      setExamDescription('');
+      loadCourseExams(selectedCourseForExam.id);
+      alert('המבחן נוצר בהצלחה!');
+    } catch (err) {
+      alert('שגיאה ביצירת המבחן: ' + err.message);
+    }
+  };
+
+  const handleDeleteExam = async (examId, courseId) => {
+    if (!confirm('האם אתה בטוח שברצונך למחוק את המבחן?')) {
+      return;
+    }
+
+    try {
+      await secureFetch(`/exams/${examId}`, {
+        method: 'DELETE'
+      });
+      loadCourseExams(courseId);
+      alert('המבחן נמחק בהצלחה!');
+    } catch (err) {
+      alert('שגיאה במחיקת המבחן: ' + err.message);
+    }
+  };
+
+  const toggleCourseExpansion = async (courseId) => {
+    if (expandedCourseId === courseId) {
+      setExpandedCourseId(null);
+    } else {
+      setExpandedCourseId(courseId);
+      if (!courseExams[courseId]) {
+        loadCourseExams(courseId);
+      }
+      if (!courseStudents[courseId]) {
+        loadCourseStudents(courseId);
+      }
     }
   };
 
   useEffect(() => {
-    async function loadDashboard() {
-      try {
-        const result = await secureFetch('/dashboard/teacher');
-        setData(result);
-      } catch (err) {
-        setError(err.message);
-      } finally {
-        setLoading(false);
-      }
-    }
     loadDashboard();
-  }, []);
+    if (activeTab === 'כיתות') {
+      loadCourses();
+    }
+  }, [activeTab]);
 
   if (loading) return <div style={{ padding: '50px', textAlign: 'center' }}>טוען נתונים...</div>;
   if (error) return <div style={{ padding: '50px', color: 'red' }}>שגיאה: {error}</div>;
@@ -91,13 +149,14 @@ export default function TeacherDashboard({ permissions = [] }) {
   return (
     <div className="dashboard-wrapper">
       <div className="welcome-header">
-        <h1>ברוך שובך, {user_name}! 🌿</h1>
+        <h1>ברוך שובך {user_name}! 🌿</h1>
         <p>הנה סיכום הפעילות והפניות של התלמידים שלך</p>
       </div>
 
       <div className="dashboard-3col">
         {/* Column 1: Students & Conversations */}
-        <div className="glass-panel" style={{ gridColumn: 'span 2' }}>
+        {(activeTab === 'תלמידים' || activeTab === 'ראשי') && (
+          <div className="glass-panel" style={{ gridColumn: activeTab === 'תלמידים' ? 'span 3' : 'span 2', display: activeTab === 'ראשי' ? 'none' : 'block' }}>
           <div className="panel-header" style={{ backgroundColor: 'var(--col-mint)' }}>
             <h3>התלמידים שלי ושיחות (לפי כיתות)</h3>
           </div>
@@ -154,7 +213,7 @@ export default function TeacherDashboard({ permissions = [] }) {
                           <div style={{ fontSize: '0.85rem', marginBottom: '2px' }}><strong>סיבה:</strong> {s.active_leave.reason || "לא צוין"}</div>
                           <div style={{ fontSize: '0.85rem' }}><strong>חזרה משוערת:</strong> {new Date(s.active_leave.return_date).toLocaleString('he-IL')}</div>
                         </div>
-                        {permissions.includes("can_manage_leaves") && (
+                        {(permissions || []).includes("can_manage_leaves") && (
                           <button 
                             onClick={async (e) => {
                               e.stopPropagation();
@@ -207,7 +266,8 @@ export default function TeacherDashboard({ permissions = [] }) {
                         <button 
                           onClick={(e) => {
                             e.stopPropagation();
-                            recordingStudentId === s.id ? stopTeacherRecording() : startTeacherRecording(s.id);
+                            setRecordingStudentId(s.id);
+                            setRecordingStudentName(s.name);
                           }}
                           style={{
                             padding: '6px 12px',
@@ -216,11 +276,11 @@ export default function TeacherDashboard({ permissions = [] }) {
                             border: 'none',
                             cursor: 'pointer',
                             fontWeight: 'bold',
-                            backgroundColor: recordingStudentId === s.id ? '#ffcdd2' : '#e0f7fa',
-                            color: recordingStudentId === s.id ? '#c62828' : '#00838f'
+                            backgroundColor: '#e0f7fa',
+                            color: '#00838f'
                           }}
                         >
-                          {recordingStudentId === s.id ? "⏹️ סיים תמלול שיחה ליומן" : "🎙️ תמלל שיחה ליומן"}
+                          🎙️ תמלל שיחה ליומן
                         </button>
                       </div>
                     </div>
@@ -273,10 +333,11 @@ export default function TeacherDashboard({ permissions = [] }) {
             ))}
           </div>
         </div>
+        )}
 
         {/* Column 2: Leaves (Privilege Based) */}
-        {permissions.includes("can_manage_leaves") && (
-          <div className="glass-panel">
+        {(activeTab === 'יציאות' || activeTab === 'ראשי') && ((permissions || []).includes("can_manage_leaves") || role === 'admin') && (
+          <div className="glass-panel" style={{ gridColumn: activeTab === 'יציאות' ? 'span 3' : 'span 1' }}>
             <div className="panel-header" style={{ backgroundColor: 'var(--col-blue)' }}>
               <h3>בקשות יציאה</h3>
             </div>
@@ -331,7 +392,8 @@ export default function TeacherDashboard({ permissions = [] }) {
         )}
 
         {/* Column 3: Exams */}
-        <div className="glass-panel">
+        {(activeTab === 'מבחנים' || activeTab === 'ראשי') && (
+        <div className="glass-panel" style={{ gridColumn: activeTab === 'מבחנים' ? 'span 3' : 'span 1' }}>
           <div className="panel-header" style={{ backgroundColor: 'var(--col-purple)' }}>
             <h3>מבחנים קרובים</h3>
           </div>
@@ -349,6 +411,147 @@ export default function TeacherDashboard({ permissions = [] }) {
             ))}
           </div>
         </div>
+        )}
+
+        {/* Column 4: Teacher Course Management */}
+        {activeTab === 'כיתות' && (
+          <div className="glass-panel" style={{ gridColumn: 'span 3' }}>
+            <div className="panel-header" style={{ backgroundColor: 'var(--col-orange)' }}>
+              <h3>הכיתות המקצועיות שלי</h3>
+            </div>
+            <div className="panel-content" style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '15px' }}>
+              {courses.length === 0 ? (
+                <p>אין כיתות משויכות אליך. פנה למנהל להשמה לכיתות.</p>
+              ) : (
+                courses.map(course => (
+                  <div
+                    key={course.id}
+                    className="pill-card"
+                    style={{ flexDirection: 'column', alignItems: 'flex-start', gap: '10px', cursor: 'pointer' }}
+                    onClick={() => toggleCourseExpansion(course.id)}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
+                        <div className="avatar" style={{ backgroundColor: '#ffcc80' }}>📚</div>
+                        <div>
+                          <div style={{ fontWeight: '600' }}>{course.name}</div>
+                          <div style={{ fontSize: '0.85rem', color: 'var(--text-sub)' }}>
+                            תלמידים: {courseStudents[course.id]?.length || 0}
+                          </div>
+                        </div>
+                      </div>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSelectedCourseForExam(course);
+                          setShowExamModal(true);
+                        }}
+                        style={{
+                          padding: '8px 16px',
+                          backgroundColor: '#ff9800',
+                          color: 'white',
+                          border: 'none',
+                          borderRadius: '8px',
+                          cursor: 'pointer',
+                          fontWeight: 'bold',
+                          fontSize: '0.85rem'
+                        }}
+                      >
+                        + הוסף מבחן
+                      </button>
+                    </div>
+
+                    {expandedCourseId === course.id && (
+                      <div style={{ width: '100%', marginTop: '10px', padding: '15px', backgroundColor: 'rgba(255,255,255,0.7)', borderRadius: '12px', boxShadow: 'inset 0 2px 4px rgba(0,0,0,0.02)' }}>
+                        {/* Exams Section */}
+                        <div style={{ marginBottom: '20px' }}>
+                          <div style={{ fontSize: '0.9rem', fontWeight: 'bold', color: '#455a64', marginBottom: '10px' }}>
+                            מבחנים מתוכננים:
+                          </div>
+                          {(!courseExams[course.id] || courseExams[course.id].length === 0) ? (
+                            <div style={{ fontSize: '0.85rem', color: 'var(--text-sub)' }}>אין מבחנים מתוכננים</div>
+                          ) : (
+                            courseExams[course.id].map(exam => (
+                              <div key={exam.id} style={{
+                                display: 'flex',
+                                justifyContent: 'space-between',
+                                alignItems: 'center',
+                                padding: '10px',
+                                backgroundColor: '#fff3e0',
+                                borderRadius: '8px',
+                                marginBottom: '8px',
+                                borderRight: '4px solid #ff9800'
+                              }}>
+                                <div>
+                                  <div style={{ fontWeight: 'bold' }}>{exam.subject}</div>
+                                  <div style={{ fontSize: '0.85rem', color: '#666' }}>
+                                    תאריך: {new Date(exam.date_scheduled).toLocaleDateString('he-IL')}
+                                  </div>
+                                  {exam.description && (
+                                    <div style={{ fontSize: '0.85rem', color: '#666', marginTop: '4px' }}>
+                                      {exam.description}
+                                    </div>
+                                  )}
+                                </div>
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleDeleteExam(exam.id, course.id);
+                                  }}
+                                  style={{
+                                    padding: '6px 12px',
+                                    fontSize: '0.75rem',
+                                    backgroundColor: '#f44336',
+                                    color: 'white',
+                                    border: 'none',
+                                    borderRadius: '6px',
+                                    cursor: 'pointer',
+                                    fontWeight: 'bold'
+                                  }}
+                                >
+                                  מחק
+                                </button>
+                              </div>
+                            ))
+                          )}
+                        </div>
+
+                        {/* Students Section */}
+                        <div>
+                          <div style={{ fontSize: '0.9rem', fontWeight: 'bold', color: '#455a64', marginBottom: '10px' }}>
+                            רשימת תלמידים:
+                          </div>
+                          {(!courseStudents[course.id] || courseStudents[course.id].length === 0) ? (
+                            <div style={{ fontSize: '0.85rem', color: 'var(--text-sub)' }}>אין תלמידים משויכים לכיתה זו</div>
+                          ) : (
+                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '10px' }}>
+                              {courseStudents[course.id].map(student => (
+                                <div key={student.id} style={{
+                                  padding: '10px',
+                                  backgroundColor: '#e3f2fd',
+                                  borderRadius: '8px',
+                                  fontSize: '0.85rem'
+                                }}>
+                                  <div style={{ fontWeight: 'bold' }}>
+                                    {student.first_name} {student.last_name}
+                                  </div>
+                                  <div style={{ color: '#666', fontSize: '0.8rem' }}>
+                                    {student.grade_level}
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        )}
+        
 
       </div>
 
@@ -358,6 +561,136 @@ export default function TeacherDashboard({ permissions = [] }) {
           studentName={archiveStudentName}
           onClose={() => setArchiveStudentId(null)}
         />
+      )}
+
+      {recordingStudentId && (
+        <RecordingModal
+          studentId={recordingStudentId}
+          studentName={recordingStudentName}
+          onClose={() => setRecordingStudentId(null)}
+          onRecordingComplete={() => {
+            setRecordingStudentId(null);
+            loadDashboard(); // Refresh data!
+          }}
+        />
+      )}
+
+      {/* Exam Creation Modal */}
+      {showExamModal && selectedCourseForExam && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          backgroundColor: 'rgba(0, 0, 0, 0.5)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 1000
+        }}>
+          <div style={{
+            backgroundColor: 'white',
+            padding: '30px',
+            borderRadius: '12px',
+            minWidth: '400px',
+            boxShadow: '0 4px 20px rgba(0, 0, 0, 0.3)'
+          }}>
+            <h3 style={{ marginBottom: '20px', textAlign: 'center' }}>
+              הוסף מבחן - {selectedCourseForExam.name}
+            </h3>
+            <div style={{ marginBottom: '15px' }}>
+              <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold' }}>
+                נושא המבחן:
+              </label>
+              <input
+                type="text"
+                value={examSubject}
+                onChange={(e) => setExamSubject(e.target.value)}
+                placeholder='לדוגמה: "מבחן אמצע - אלגברה"'
+                style={{
+                  width: '100%',
+                  padding: '10px',
+                  borderRadius: '6px',
+                  border: '1px solid #ddd',
+                  fontSize: '1rem'
+                }}
+              />
+            </div>
+            <div style={{ marginBottom: '15px' }}>
+              <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold' }}>
+                תאריך המבחן:
+              </label>
+              <input
+                type="datetime-local"
+                value={examDate}
+                onChange={(e) => setExamDate(e.target.value)}
+                style={{
+                  width: '100%',
+                  padding: '10px',
+                  borderRadius: '6px',
+                  border: '1px solid #ddd',
+                  fontSize: '1rem'
+                }}
+              />
+            </div>
+            <div style={{ marginBottom: '20px' }}>
+              <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold' }}>
+                תיאור (אופציונלי):
+              </label>
+              <textarea
+                value={examDescription}
+                onChange={(e) => setExamDescription(e.target.value)}
+                placeholder="פרטים נוספים על המבחן..."
+                rows={3}
+                style={{
+                  width: '100%',
+                  padding: '10px',
+                  borderRadius: '6px',
+                  border: '1px solid #ddd',
+                  fontSize: '1rem',
+                  resize: 'vertical'
+                }}
+              />
+            </div>
+            <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
+              <button
+                onClick={() => {
+                  setShowExamModal(false);
+                  setSelectedCourseForExam(null);
+                  setExamSubject('');
+                  setExamDate('');
+                  setExamDescription('');
+                }}
+                style={{
+                  padding: '10px 20px',
+                  backgroundColor: '#f5f5f5',
+                  color: '#333',
+                  border: 'none',
+                  borderRadius: '6px',
+                  cursor: 'pointer',
+                  fontWeight: 'bold'
+                }}
+              >
+                ביטול
+              </button>
+              <button
+                onClick={handleCreateExam}
+                style={{
+                  padding: '10px 20px',
+                  backgroundColor: '#ff9800',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '6px',
+                  cursor: 'pointer',
+                  fontWeight: 'bold'
+                }}
+              >
+                צור מבחן
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

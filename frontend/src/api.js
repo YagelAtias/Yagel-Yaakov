@@ -48,6 +48,8 @@ export const secureFetch = async (endpoint, options = {}) => {
     if (response.status === 401) {
         // Token expired or invalid!
         localStorage.removeItem('jwt_token');
+        localStorage.removeItem('user_role');
+        localStorage.removeItem('user_permissions');
         window.location.reload(); // Force them back to the login screen
         throw new Error('Session expired');
     }

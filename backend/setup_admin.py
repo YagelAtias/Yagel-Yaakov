@@ -44,7 +44,7 @@ def setup_admin():
             
             new_admin = models.User(
                 email=admin_email,
-                full_name="Yagel Atias (Principal)",
+                full_name="יגל אטיאס",
                 hashed_password=get_password_hash(admin_password),
                 role="admin",
                 organization_id=org.id,

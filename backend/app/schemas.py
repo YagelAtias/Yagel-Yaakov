@@ -4,6 +4,7 @@ from typing import List, Optional, Literal
 class Segment(BaseModel):
     text: str
     intensity: Literal["whisper", "normal", "shout"]
+    words: Optional[list] = []
 
 
 class DistressAnalysisRequest(BaseModel):

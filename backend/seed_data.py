@@ -15,46 +15,40 @@ def seed_data():
             print("No organization found. Run setup_admin.py first!")
             return
 
+        # Find Admin (Yagel Atias) to assign as teacher
+        admin_user = db.query(models.User).filter(models.User.email == "admin@yagel-yaakov.edu").first()
+
         # 1. Create Classrooms
         print("Creating Classrooms...")
-        class1 = models.Classroom(name="כיתה ח' 1", organization_id=org.id)
-        class2 = models.Classroom(name="כיתה ט' 3", organization_id=org.id)
-        db.add_all([class1, class2])
+        class1 = models.Classroom(name="כיתה ח' 1", organization_id=org.id, teacher_id=admin_user.id)
+        db.add(class1)
         db.commit()
 
-        # 2. Create Students
-        print("Creating Students...")
-        students = [
-            models.Student(first_name="דניאל", last_name="לוי", grade_level="ח", organization_id=org.id, classroom_id=class1.id),
-            models.Student(first_name="יוסף", last_name="כהן", grade_level="ח", organization_id=org.id, classroom_id=class1.id),
-            models.Student(first_name="נועם", last_name="אברהם", grade_level="ט", organization_id=org.id, classroom_id=class2.id),
-            models.Student(first_name="אריאל", last_name="שטרן", grade_level="ט", organization_id=org.id, classroom_id=class2.id)
-        ]
-        db.add_all(students)
+        # 2. Create Subject Courses (Taught by Admin)
+        print("Creating Subject Courses...")
+        math_course = models.Course(name="מתמטיקה 4 יח\"ל", organization_id=org.id, teacher_id=admin_user.id)
+        gemara_course = models.Course(name="גמרא מורחב", organization_id=org.id, teacher_id=admin_user.id)
+        db.add_all([math_course, gemara_course])
         db.commit()
 
-        # 3. Create Exams
-        print("Creating Exams...")
-        db.add(models.Exam(classroom_id=class1.id, subject="מבחן בגמרא", date_scheduled=datetime.utcnow() + timedelta(days=2)))
-        db.add(models.Exam(classroom_id=class2.id, subject="מבחן בפיזיקה", date_scheduled=datetime.utcnow() + timedelta(days=5)))
+        # 3. Create Only One Student (Daniel Levi) and Enroll him
+        print("Creating Student...")
+        daniel = models.Student(first_name="דניאל", last_name="לוי", grade_level="ח", organization_id=org.id, classroom_id=class1.id)
         
-        # 4. Create Leaves
-        print("Creating Dorm Leaves...")
-        db.add(models.DormLeave(student_id=students[0].id, leave_type="שבת הביתה", destination="ירושלים", departure_date=datetime.utcnow() + timedelta(days=3), return_date=datetime.utcnow() + timedelta(days=5), status="pending"))
-        db.add(models.DormLeave(student_id=students[2].id, leave_type="אירוע משפחתי", destination="תל אביב", departure_date=datetime.utcnow() + timedelta(days=1), return_date=datetime.utcnow() + timedelta(days=1), status="pending"))
+        # Enroll Daniel in courses
+        daniel.courses.append(math_course)
+        daniel.courses.append(gemara_course)
+        
+        db.add(daniel)
+        db.commit()
 
-        # 5. Create Conversations (Distress Logs)
-        print("Creating Conversation History...")
-        for student in students:
-            for i in range(3):
-                date = datetime.utcnow() - timedelta(days=random.randint(1, 30))
-                db.add(models.DistressLog(
-                    student_id=student.id,
-                    timestamp=date,
-                    overall_score=random.uniform(0.1, 0.9),
-                    has_critical_alert=(random.random() > 0.8),
-                    encrypted_raw_text="ENCRYPTED_DUMMY_DATA"
-                ))
+        # 4. Create Exams (assigned to courses)
+        print("Creating Exams...")
+        db.add(models.Exam(course_id=math_course.id, subject="מבחן במתמטיקה", date_scheduled=datetime.utcnow() + timedelta(days=2)))
+        db.add(models.Exam(course_id=gemara_course.id, subject="מבחן בגמרא", date_scheduled=datetime.utcnow() + timedelta(days=5)))
+        
+        # 5. Clear Old Leaves and Conversations
+        print("Skipping Leave Requests and Conversations (Starting Clean)")
 
         db.commit()
         print("✅ Successfully seeded the database with live data!")

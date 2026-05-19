@@ -1,7 +1,15 @@
-from sqlalchemy import Column, Integer, String, Float, Boolean, ForeignKey, DateTime, JSON
+from sqlalchemy import Column, Integer, String, Float, Boolean, ForeignKey, DateTime, JSON, Table
 from sqlalchemy.orm import relationship
 from datetime import datetime
 from .database import Base
+
+# Junction table for Student <-> Course relationship
+student_courses = Table(
+    "student_courses",
+    Base.metadata,
+    Column("student_id", Integer, ForeignKey("students.id"), primary_key=True),
+    Column("course_id", Integer, ForeignKey("courses.id"), primary_key=True)
+)
 
 class Organization(Base):
     """Represents a specific School, Yeshiva, or Ulpana."""
@@ -35,6 +43,8 @@ class User(Base):
     # Relationships
     organization = relationship("Organization", back_populates="users")
     classrooms = relationship("Classroom", back_populates="teacher")
+    courses = relationship("Course", back_populates="teacher")
+    authored_logs = relationship("DistressLog", back_populates="author")
 
 class Student(Base):
     """Represents a student being monitored by the DistressEngine."""
@@ -55,6 +65,7 @@ class Student(Base):
     # Relationships
     organization = relationship("Organization", back_populates="students")
     classroom = relationship("Classroom", back_populates="students")
+    courses = relationship("Course", secondary=student_courses, back_populates="students")
     distress_logs = relationship("DistressLog", back_populates="student")
     grades = relationship("Grade", back_populates="student")
     dorm_leaves = relationship("DormLeave", back_populates="student")
@@ -73,8 +84,21 @@ class Classroom(Base):
     organization = relationship("Organization", back_populates="classrooms")
     teacher = relationship("User", back_populates="classrooms")
     students = relationship("Student", back_populates="classroom")
-    exams = relationship("Exam", back_populates="classroom")
     schedule_slots = relationship("ScheduleSlot", back_populates="classroom")
+
+class Course(Base):
+    """Subject classes taught by Subject Teachers."""
+    __tablename__ = "courses"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, nullable=False) # e.g., "Math 4 Units - Group B"
+    organization_id = Column(Integer, ForeignKey("organizations.id"))
+    teacher_id = Column(Integer, ForeignKey("users.id")) # Subject teacher
+
+    # Relationships
+    teacher = relationship("User", back_populates="courses")
+    students = relationship("Student", secondary=student_courses, back_populates="courses")
+    exams = relationship("Exam", back_populates="course")
 
 class DistressLog(Base):
     """Highly confidential analysis output. Text is ENCRYPTED."""
@@ -82,6 +106,7 @@ class DistressLog(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     student_id = Column(Integer, ForeignKey("students.id"), nullable=False)
+    author_id = Column(Integer, ForeignKey("users.id"), nullable=True) # Teacher who held the conversation
     timestamp = Column(DateTime, default=datetime.utcnow)
     
     # AES-256-GCM Encrypted Base64 string. NEVER PLAIN TEXT!
@@ -95,6 +120,7 @@ class DistressLog(Base):
 
     # Relationships
     student = relationship("Student", back_populates="distress_logs")
+    author = relationship("User", back_populates="authored_logs")
 
 class Grade(Base):
     """Tracks academic performance over time for distress correlation."""
@@ -153,17 +179,17 @@ class BagrutStatus(Base):
     student = relationship("Student", back_populates="bagrut_records")
 
 class Exam(Base):
-    """Allows teachers to schedule upcoming exams for their classroom."""
+    """Allows teachers to schedule upcoming exams for their course."""
     __tablename__ = "exams"
 
     id = Column(Integer, primary_key=True, index=True)
-    classroom_id = Column(Integer, ForeignKey("classrooms.id"), nullable=False)
+    course_id = Column(Integer, ForeignKey("courses.id"), nullable=False)
     subject = Column(String, nullable=False)
     date_scheduled = Column(DateTime, nullable=False)
     description = Column(String, nullable=True)
     
     # Relationships
-    classroom = relationship("Classroom", back_populates="exams")
+    course = relationship("Course", back_populates="exams")
 
 class ScheduleSlot(Base):
     """Weekly class schedule for a classroom."""
