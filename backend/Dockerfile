@@ -23,5 +23,6 @@ COPY . .
 # Expose port 8080 to match Google Cloud Run default expectations.
 EXPOSE 8080
 
-# Run the FastAPI application using Uvicorn. We bind to 0.0.0.0 and port 8080.
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8080"]
+# Run database setup (creates tables and admin user) then start the FastAPI application.
+# We use 'sh -c' to chain the commands together.
+CMD ["sh", "-c", "python setup_admin.py && uvicorn app.main:app --host 0.0.0.0 --port 8080"]
