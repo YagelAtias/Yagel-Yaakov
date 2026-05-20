@@ -24,5 +24,5 @@ COPY . .
 EXPOSE 8080
 
 # Run database setup (creates tables and admin user) then start the FastAPI application.
-# We use 'sh -c' to chain the commands together.
-CMD ["sh", "-c", "python setup_admin.py && uvicorn app.main:app --host 0.0.0.0 --port 8080"]
+# We use '|| true' so that if the database is misconfigured, it doesn't crash the entire deployment.
+CMD sh -c "python setup_admin.py || echo 'Database setup failed, but starting server anyway...'; uvicorn app.main:app --host 0.0.0.0 --port 8080"
