@@ -25,4 +25,4 @@ EXPOSE 8080
 
 # Run database setup (creates tables and admin user) then start the FastAPI application.
 # We use '|| true' so that if the database is misconfigured, it doesn't crash the entire deployment.
-CMD sh -c "python setup_admin.py || echo 'Database setup failed, but starting server anyway...'; uvicorn main:app --host 0.0.0.0 --port ${PORT:-8080}"
+CMD sh -c "python setup_admin.py && python seed_data.py || echo 'Database setup/seed failed, but starting server anyway...'; uvicorn main:app --host 0.0.0.0 --port ${PORT:-8080}"

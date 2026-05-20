@@ -14,6 +14,8 @@ RUN npm install
 COPY . .
 
 # Build the Vite React app for production. The output will be in the 'dist' folder.
+ARG VITE_API_BASE_URL
+ENV VITE_API_BASE_URL=$VITE_API_BASE_URL
 RUN npm run build
 
 # We use a lightweight Nginx image to serve the compiled static files.

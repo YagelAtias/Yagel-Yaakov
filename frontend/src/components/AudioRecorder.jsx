@@ -1,4 +1,5 @@
 import React, { useState, useRef } from 'react';
+import { BASE_URL } from '../api';
 
 const AudioRecorder = ({ onAnalysisComplete }) => {
   const [isRecording, setIsRecording] = useState(false);
@@ -55,7 +56,7 @@ const AudioRecorder = ({ onAnalysisComplete }) => {
     formData.append('file', blob, 'recording.webm');
 
     try {
-      const response = await fetch('http://127.0.0.1:8000/api/v2/analyze_audio', {
+      const response = await fetch(`${BASE_URL}/analyze_audio`, {
         method: 'POST',
         body: formData,
       });
