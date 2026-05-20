@@ -30,17 +30,13 @@ def setup_admin():
 
         # 2. Setup Admin User
         admin_email = "admin@yagel-yaakov.edu"
-        admin_password = "AdminPassword123!"
+        admin_password = os.environ.get("ADMIN_PASSWORD", "AdminPassword123!")
+        raw_master_dek = b"MASTER_SCHOOL_DEK_9999_SUPER_SECRET"
+        wrapped_dek = generate_wrapped_dek(raw_master_dek, admin_password)
         
         user = db.query(models.User).filter(models.User.email == admin_email).first()
         if not user:
             print(f"Creating Admin User: {admin_email}...")
-            
-            # The School's plain DEK (Generated once, NEVER saved in plain text!)
-            raw_master_dek = b"MASTER_SCHOOL_DEK_9999_SUPER_SECRET"
-            
-            # Cryptographic Handshake: Wrap the DEK into a lockbox using the Admin's password
-            wrapped_dek = generate_wrapped_dek(raw_master_dek, admin_password)
             
             new_admin = models.User(
                 email=admin_email,
@@ -48,7 +44,8 @@ def setup_admin():
                 hashed_password=get_password_hash(admin_password),
                 role="admin",
                 organization_id=org.id,
-                encrypted_dek=wrapped_dek
+                encrypted_dek=wrapped_dek,
+                permissions=["can_manage_leaves", "can_take_attendance"]
             )
             
             db.add(new_admin)
@@ -57,7 +54,14 @@ def setup_admin():
             print(f"   Email: {admin_email}")
             print(f"   Password: {admin_password}\n")
         else:
-            print(f"Admin User '{admin_email}' already exists.")
+            print(f"Admin User '{admin_email}' already exists. Ensuring demo credentials and role...")
+            user.hashed_password = get_password_hash(admin_password)
+            user.role = "admin"
+            user.organization_id = org.id
+            user.encrypted_dek = wrapped_dek
+            user.permissions = ["can_manage_leaves", "can_take_attendance"]
+            db.commit()
+            print("Admin User updated for demo login.")
             
     except Exception as e:
         print(f"Error occurred: {e}")
