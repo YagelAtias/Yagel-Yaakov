@@ -1,9 +1,5 @@
 // api.js - This handles all direct communication with the Python FastAPI Backend
-const API_ORIGIN = import.meta.env.VITE_API_BASE_URL || (
-    import.meta.env.DEV
-        ? 'http://127.0.0.1:8000'
-        : 'https://yagel-yaakov-167185304524.europe-west1.run.app'
-);
+const API_ORIGIN = import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000';
 export const BASE_URL = `${API_ORIGIN.replace(/\/$/, '')}/api/v2`;
 
 // Standard login function using OAuth2 specs
