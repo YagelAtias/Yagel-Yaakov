@@ -17,7 +17,7 @@ def setup_admin():
     
     try:
         # 1. Create the Organization
-        org_name = "Yagel-Yaakov Yeshiva"
+        org_name = "ישיבת יגל-יעקב"
         org = db.query(models.Organization).filter(models.Organization.name == org_name).first()
         if not org:
             org = models.Organization(name=org_name)

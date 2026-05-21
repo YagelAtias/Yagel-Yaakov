@@ -77,13 +77,13 @@ def seed_data():
     now = datetime.utcnow()
 
     try:
-        org = get_or_create(db, models.Organization, name="Yagel-Yaakov Yeshiva")
+        org = get_or_create(db, models.Organization, name="ישיבת יגל-יעקב")
 
         ensure_user(
             db,
             org,
             "admin@yagel-yaakov.edu",
-            "Yagel Atias",
+            "יגל אטיאס",
             "admin",
             ["can_manage_leaves", "can_take_attendance"],
         )
@@ -91,7 +91,7 @@ def seed_data():
             db,
             org,
             "teacher@yagel-yaakov.edu",
-            "Rav Amit Cohen",
+            "הרב עמית כהן",
             "teacher",
             ["can_take_attendance", "can_manage_leaves"],
         )
@@ -99,7 +99,7 @@ def seed_data():
             db,
             org,
             "counselor@yagel-yaakov.edu",
-            "Miriam Ben-David",
+            "מרים בן-דוד",
             "counselor",
             ["can_manage_leaves"],
         )
@@ -107,7 +107,7 @@ def seed_data():
         classroom = get_or_create(
             db,
             models.Classroom,
-            name="Kitah Het 1",
+            name="כיתה ח׳ 1",
             organization_id=org.id,
             defaults={"teacher_id": teacher.id},
         )
@@ -116,14 +116,14 @@ def seed_data():
         math = get_or_create(
             db,
             models.Course,
-            name="Mathematics 4 Units",
+            name="מתמטיקה 4 יחידות",
             organization_id=org.id,
             defaults={"teacher_id": teacher.id},
         )
         gemara = get_or_create(
             db,
             models.Course,
-            name="Gemara Advanced",
+            name="גמרא עיון",
             organization_id=org.id,
             defaults={"teacher_id": teacher.id},
         )
@@ -135,20 +135,20 @@ def seed_data():
             org,
             classroom,
             "student@yagel-yaakov.edu",
-            "Daniel",
-            "Levi",
-            "Het",
+            "דניאל",
+            "לוי",
+            "ח׳",
         )
 
         classmates = [
-            ("noam@yagel-yaakov.edu", "Noam", "Cohen"),
-            ("eitan@yagel-yaakov.edu", "Eitan", "Mizrahi"),
-            ("uri@yagel-yaakov.edu", "Uri", "Ben-Ari"),
-            ("yonatan@yagel-yaakov.edu", "Yonatan", "Shalev"),
+            ("noam@yagel-yaakov.edu", "נועם", "כהן"),
+            ("eitan@yagel-yaakov.edu", "איתן", "מזרחי"),
+            ("uri@yagel-yaakov.edu", "אורי", "בן-ארי"),
+            ("yonatan@yagel-yaakov.edu", "יונתן", "שלו"),
         ]
         students = [student]
         for email, first_name, last_name in classmates:
-            students.append(ensure_student(db, org, classroom, email, first_name, last_name, "Het"))
+            students.append(ensure_student(db, org, classroom, email, first_name, last_name, "ח׳"))
 
         for s in students:
             add_student_to_course(s, math)
@@ -162,8 +162,8 @@ def seed_data():
         db.query(models.DistressLog).filter(models.DistressLog.student_id.in_(student_ids)).delete(synchronize_session=False)
 
         for course, subject, days in [
-            (math, "Algebra checkpoint", 3),
-            (gemara, "Gemara bekiut quiz", 6),
+            (math, "בוחן אלגברה", 3),
+            (gemara, "בוחן בקיאות בגמרא", 6),
         ]:
             exam = db.query(models.Exam).filter(
                 models.Exam.course_id == course.id,
@@ -174,7 +174,7 @@ def seed_data():
                     course_id=course.id,
                     subject=subject,
                     date_scheduled=now + timedelta(days=days),
-                    description="Demo exam for the teacher dashboard",
+                    description="מבחן הדגמה ללוח המורה",
                 ))
 
         session = db.query(models.AttendanceSession).filter(
