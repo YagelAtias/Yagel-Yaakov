@@ -1,7 +1,10 @@
 import React from 'react';
 import './Navbar.css';
 
-export default function Navbar({ role, permissions = [], activeTab, setActiveTab, onLogout }) {
+export default function Navbar({ role, userName = '', permissions = [], activeTab, setActiveTab, onLogout }) {
+  const displayName = userName || 'משתמש';
+  const avatarLetter = displayName.trim().charAt(0) || 'מ';
+
   return (
     <nav className="navbar">
       {/* Brand */}
@@ -41,7 +44,7 @@ export default function Navbar({ role, permissions = [], activeTab, setActiveTab
       {/* Profile */}
       <div className="user-profile">
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', marginLeft: '10px' }}>
-          <span>{role === 'student' ? 'דניאל לוי' : 'צוות חינוכי'}</span>
+          <span>{displayName}</span>
           <span onClick={onLogout} style={{ fontSize: '0.75rem', color: '#e74c3c', cursor: 'pointer', fontWeight: 'bold' }}>התנתק 🚪</span>
         </div>
         <div className="avatar" style={{
@@ -50,7 +53,7 @@ export default function Navbar({ role, permissions = [], activeTab, setActiveTab
           width: '35px', 
           height: '35px'
         }}>
-          {role === 'student' ? 'ד' : 'צ'}
+          {avatarLetter}
         </div>
       </div>
     </nav>

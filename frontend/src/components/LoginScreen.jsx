@@ -20,10 +20,11 @@ export default function LoginScreen({ onLogin }) {
       // 2. Save the secure JWT token to the browser's local storage
       localStorage.setItem('jwt_token', response.access_token);
       localStorage.setItem('user_role', response.role);
+      localStorage.setItem('user_name', response.name || '');
       localStorage.setItem('user_permissions', JSON.stringify(response.permissions || []));
       
       // 3. Transition to the correct dashboard based on backend response
-      onLogin(response.role);
+      onLogin(response.role, response.name || '');
     } catch (err) {
       setError(err.message || 'אירעה שגיאה בהתחברות');
     } finally {

@@ -8,7 +8,8 @@ import './App.css';
 
 function App() {
   const [userRole, setUserRole] = useState(localStorage.getItem('user_role') || null);
-  const [activeTab, setActiveTab] = useState('ראשי');
+  const [userName, setUserName] = useState(localStorage.getItem('user_name') || '');
+  const [activeTab, setActiveTab] = useState(localStorage.getItem('active_tab') || 'ראשי');
   const logoutTimer = useRef(null);
 
   const userPermissions = JSON.parse(localStorage.getItem('user_permissions') || '[]');
@@ -16,8 +17,12 @@ function App() {
   const handleLogout = () => {
     localStorage.removeItem('jwt_token');
     localStorage.removeItem('user_role');
+    localStorage.removeItem('user_name');
     localStorage.removeItem('user_permissions');
+    localStorage.removeItem('active_tab');
     setUserRole(null);
+    setUserName('');
+    setActiveTab('ראשי');
   };
 
   // Auto-logout after 15 minutes of inactivity
@@ -45,11 +50,20 @@ function App() {
     };
   }, [userRole]);
 
+  useEffect(() => {
+    if (userRole) {
+      localStorage.setItem('active_tab', activeTab);
+    }
+  }, [activeTab, userRole]);
+
   // If not logged in, show the Login Screen!
   if (!userRole) {
-    return <LoginScreen onLogin={(role) => {
+    return <LoginScreen onLogin={(role, name = '') => {
       localStorage.setItem('user_role', role);
+      localStorage.setItem('user_name', name);
       setUserRole(role);
+      setUserName(name);
+      setActiveTab(localStorage.getItem('active_tab') || 'ראשי');
     }} />;
   }
 
@@ -70,7 +84,7 @@ function App() {
   // If logged in, show the appropriate Dashboard
   return (
     <div className="app-root">
-      <Navbar role={userRole} permissions={userPermissions} activeTab={activeTab} setActiveTab={setActiveTab} onLogout={handleLogout} />
+      <Navbar role={userRole} userName={userName} permissions={userPermissions} activeTab={activeTab} setActiveTab={setActiveTab} onLogout={handleLogout} />
       {Content}
     </div>
   );

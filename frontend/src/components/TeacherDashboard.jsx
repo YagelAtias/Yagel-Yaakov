@@ -53,7 +53,15 @@ export default function TeacherDashboard({ permissions = [], activeTab, role }) 
   const loadCourses = async () => {
     try {
       const result = await secureFetch('/courses');
-      setCourses(result.courses || []);
+      const loadedCourses = result.courses || [];
+      setCourses(loadedCourses);
+
+      await Promise.all(
+        loadedCourses.flatMap(course => [
+          loadCourseExams(course.id),
+          loadCourseStudents(course.id),
+        ])
+      );
     } catch (err) {
       console.error('Failed to load courses:', err);
     }
