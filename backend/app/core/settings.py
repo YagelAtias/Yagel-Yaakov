@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import json
 from functools import lru_cache
 from pathlib import Path
-from typing import List
+from typing import Any, List
 
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -46,7 +48,21 @@ class Settings(BaseSettings):
     CORS_ORIGINS: List[str] = [
         "http://localhost:5173",
         "http://127.0.0.1:5173",
+        "https://yagel-yaakov.web.app",
+        "https://yagel-yaakov.firebaseapp.com",
     ]
+
+    @field_validator("CORS_ORIGINS", mode="before")
+    @classmethod
+    def parse_cors_origins(cls, value: Any) -> Any:
+        if not isinstance(value, str):
+            return value
+
+        raw_value = value.strip()
+        if raw_value.startswith("["):
+            return json.loads(raw_value)
+
+        return [origin.strip() for origin in raw_value.split(",") if origin.strip()]
 
     # Pydantic v2 config: allow unknown env vars so extra keys don't break the app/migrations
     model_config = SettingsConfigDict(env_file=".env", case_sensitive=True, extra="ignore")
